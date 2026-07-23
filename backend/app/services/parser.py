@@ -1,26 +1,31 @@
 """
 文档解析服务
 ------------
-支持 PDF 和 DOCX 格式文档的文本提取。
+支持 PDF 和 DOCX 格式文档的文本提取与中文预处理。
 
 技术栈：
 - pdfplumber: 解析 PDF 文件
 - python-docx: 解析 DOCX 文件
-- jieba: 中文分词预处理（可选使用）
+- jieba: 中文分词与关键词提取
+- re: 正则表达式文本清洗
 
 使用方式：
     from app.services.parser import DocumentParser
 
     parser = DocumentParser()
     text = parser.parse("path/to/file.pdf")
+    keywords = parser.extract_keywords(text, topk=20)
 """
 
 import os
 import re
+from collections import Counter
 from pathlib import Path
 
 import pdfplumber
 import docx
+import jieba
+import jieba.analyse
 
 
 class DocumentParser:
@@ -109,9 +114,76 @@ class DocumentParser:
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
+    # ---- 中文文本预处理 ----
+
+    @staticmethod
+    def segment(text: str) -> list:
+        """
+        使用 jieba 对中文文本进行分词。
+
+        Args:
+            text: 待分词的文本
+
+        Returns:
+            分词后的词语列表
+        """
+        return list(jieba.cut(text))
+
+    @staticmethod
+    def extract_keywords(text: str, topk: int = 20) -> list:
+        """
+        使用 jieba TF-IDF 算法提取文本关键词。
+
+        Args:
+            text: 待提取的文本
+            topk: 返回的关键词数量
+
+        Returns:
+            [(关键词, 权重), ...] 按权重降序排列
+        """
+        return jieba.analyse.extract_tags(text, topK=topk, withWeight=True)
+
+    @staticmethod
+    def extract_keywords_textrank(text: str, topk: int = 20) -> list:
+        """
+        使用 jieba TextRank 算法提取文本关键词。
+
+        Args:
+            text: 待提取的文本
+            topk: 返回的关键词数量
+
+        Returns:
+            [(关键词, 权重), ...] 按权重降序排列
+        """
+        return jieba.analyse.textrank(text, topK=topk, withWeight=True)
+
+    @staticmethod
+    def get_word_frequency(text: str, min_len: int = 2) -> list:
+        """
+        统计词频（过滤单字词和标点）。
+
+        Args:
+            text: 待统计的文本
+            min_len: 最小词长
+
+        Returns:
+            [(词语, 频次), ...] 按频次降序排列
+        """
+        words = jieba.cut(text)
+        counter = Counter(
+            w for w in words if len(w.strip()) >= min_len
+        )
+        return counter.most_common(100)
+
 
 # 便捷函数
 def parse_document(file_path: str) -> str:
     """解析文档的便捷函数"""
     parser = DocumentParser()
     return parser.parse(file_path)
+
+
+def extract_keywords(text: str, topk: int = 20) -> list:
+    """提取关键词的便捷函数"""
+    return DocumentParser.extract_keywords(text, topk)
+

@@ -19,9 +19,11 @@
 """
 
 import json
+import re
 import asyncio
 from typing import List, Dict, Optional
 
+import jieba
 from openai import AsyncOpenAI
 
 from app.core.config import get_settings
@@ -149,19 +151,48 @@ class KnowledgeExtractor:
 
     def _chunk_text(self, text: str) -> List[str]:
         """
-        将长文本切分为多个块，每块约为 chunk_size 个字符。
-        保留 chunk_overlap 个字符的重叠区域以保持上下文。
+        将长文本切分为多个块，使用 jieba 分词在句子边界处切割，
+        避免在中文字词中间断开，保持语义完整性。
+
+        每块约为 chunk_size 个字符，保留 chunk_overlap 个字符重叠。
         """
         if len(text) <= self.chunk_size:
             return [text]
 
+        # 使用 jieba 分词识别词语边界
+        words = list(jieba.cut(text))
+
         chunks = []
-        start = 0
-        while start < len(text):
-            end = start + self.chunk_size
-            chunk = text[start:end]
-            chunks.append(chunk)
-            start += (self.chunk_size - self.chunk_overlap)
+        current_chunk = []
+        current_len = 0
+        overlap_buffer = []
+
+        for word in words:
+            word_len = len(word)
+            current_chunk.append(word)
+            current_len += word_len
+
+            if current_len >= self.chunk_size:
+                chunk_text = "".join(current_chunk)
+                chunks.append(chunk_text)
+
+                # 保留末尾 overlap 长度的词语作为下一块的上下文
+                overlap_chars = 0
+                overlap_buffer = []
+                for w in reversed(current_chunk):
+                    overlap_chars += len(w)
+                    overlap_buffer.insert(0, w)
+                    if overlap_chars >= self.chunk_overlap:
+                        break
+
+                current_chunk = list(overlap_buffer)
+                current_len = sum(len(w) for w in current_chunk)
+
+        # 处理最后一块
+        if current_chunk:
+            remaining = "".join(current_chunk)
+            if remaining not in chunks:
+                chunks.append(remaining)
 
         return chunks
 
