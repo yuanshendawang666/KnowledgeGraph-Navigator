@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.env
+*.db
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads
+uploads/
+
+# TypeScript 构建产物
+*.tsbuildinfo
+vite.config.d.ts
+
+# 本地多余嵌套目录
+KnowledgeGraph-Navigator-main/
