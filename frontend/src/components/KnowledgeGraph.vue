@@ -33,6 +33,10 @@
         :class="{ active: layoutMode === 'radial' }"
         @click="setLayoutMode('radial')"
       >圆形图</button>
+      <div v-if="layoutMode === 'radial'" class="kg-gap-control">
+        <span class="kg-gap-label">圈间距</span>
+        <el-slider v-model="radialGap" :min="30" :max="160" :step="5" style="width: 120px" @change="buildGraph" />
+      </div>
       <button class="kg-export-btn" @click="exportImage" title="导出为PNG图片">
         <el-icon :size="16"><Download /></el-icon> 导出图片
       </button>
@@ -64,6 +68,7 @@ const hasData = ref(false)
 
 // 布局模式：tree=树状图, radial=圆形图
 const layoutMode = ref<'tree' | 'radial'>('tree')
+const radialGap = ref(80)
 
 // 关系类型配置（与后端 relation 字段对应，后端返回大写，这里做归一化）
 const RELATION_META: Record<string, { label: string; color: string }> = {
@@ -110,6 +115,52 @@ const NODE_COLORS = {
   stroke: ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0284c7', '#e11d48', '#ea580c', '#65a30d'],
 }
 
+function polarToXY(angle: number, radius: number, cx: number, cy: number) {
+  return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) }
+}
+
+// 手动计算放射状位置：根模块在内圈、子模块在中圈、叶子在外圈，按根模块分扇区均匀分布 360°（完整圆形）
+function computeRadialPositions(nodes: any[], cx: number, cy: number, radii: number[]) {
+  const childMap = new Map<string, string[]>()
+  for (const n of nodes) {
+    const pid = (n as any).parent_id
+    if (pid) {
+      if (!childMap.has(pid)) childMap.set(pid, [])
+      childMap.get(pid)!.push(n.id)
+    }
+  }
+  const roots = nodes.filter((n: any) => (n as any).level === 0)
+  const positions = new Map<string, { x: number; y: number }>()
+  const [r1, r2, r3] = radii
+
+  const N = Math.max(roots.length, 1)
+  const rootSweep = (2 * Math.PI) / N
+
+  roots.forEach((root: any, i: number) => {
+    const start = i * rootSweep
+    positions.set(root.id, polarToXY(start + rootSweep / 2, r1, cx, cy))
+    const subs = childMap.get(root.id) || []
+    const subSweep = subs.length ? rootSweep / subs.length : rootSweep
+    subs.forEach((subId: string, j: number) => {
+      const subStart = start + j * subSweep
+      positions.set(subId, polarToXY(subStart + subSweep / 2, r2, cx, cy))
+      const leaves = childMap.get(subId) || []
+      const leafSweep = leaves.length ? subSweep / leaves.length : subSweep
+      leaves.forEach((leafId: string, k: number) => {
+        positions.set(leafId, polarToXY(subStart + k * leafSweep + leafSweep / 2, r3, cx, cy))
+      })
+    })
+  })
+
+  // 兜底：未放置的节点（如无父子关系的节点）放中心
+  for (const n of nodes) {
+    if (!positions.has(n.id)) {
+      positions.set(n.id, { x: cx, y: cy })
+    }
+  }
+  return positions
+}
+
 function buildGraph() {
   if (!graphRef.value || !props.data) return
   if (!props.data.nodes?.length) {
@@ -138,31 +189,52 @@ function buildGraph() {
     }
   }
 
-  const data = {
-    nodes: props.data.nodes.map((n, i) => {
-      const rid = (n as any).root_id || n.id
-      return {
-        id: n.id,
-        data: {
-          label: n.label,
-          description: n.description || '',
-          order: n.order_index ?? i,
-          level: (n as any).level,
-          is_module: (n as any).is_module,
-          sqlite_id: (n as any).sqlite_id,
-          root_id: rid,
-          color_index: rootColorIndex.get(rid) ?? 0,
-        },
-      }
-    }),
-    edges: edges.map((e) => ({
-      source: e.source,
-      target: e.target,
-      data: {
-        relation: normalizeRelation(e.relation),
-      },
-    })),
+  // 反转 PART_OF 边：让箭头从父指向子（根 → 子）
+  const edgeList = edges.map((e) => {
+    const rel = normalizeRelation(e.relation)
+    const source = rel === 'part_of' ? e.target : e.source
+    const target = rel === 'part_of' ? e.source : e.target
+    return { source, target, data: { relation: rel } }
+  })
+
+  // 放射状布局：手动计算每个节点的位置（完整圆形，根在内、子在外）
+  let manualPositions: Map<string, { x: number; y: number }> | null = null
+  if (layoutMode.value === 'radial') {
+    const w = graphRef.value.clientWidth || 800
+    const h = graphRef.value.clientHeight || 460
+    const cx = w / 2
+    const cy = h / 2
+    const minDim = Math.min(w, h)
+    const r1 = minDim * 0.1
+    const r2 = r1 + radialGap.value
+    const r3 = r2 + radialGap.value
+    manualPositions = computeRadialPositions(
+      props.data.nodes,
+      cx, cy,
+      [r1, r2, r3],
+    )
   }
+
+  const nodeList = props.data.nodes.map((n, i) => {
+    const rid = (n as any).root_id || n.id
+    const pos = manualPositions?.get(n.id)
+    return {
+      id: n.id,
+      data: {
+        label: n.label,
+        description: n.description || '',
+        order: n.order_index ?? i,
+        level: (n as any).level,
+        is_module: (n as any).is_module,
+        sqlite_id: (n as any).sqlite_id,
+        root_id: rid,
+        color_index: rootColorIndex.get(rid) ?? 0,
+      },
+      ...(pos ? { style: { x: pos.x, y: pos.y } } : {}),
+    }
+  })
+
+  const data = { nodes: nodeList, edges: edgeList }
 
   graphInstance = new Graph({
     container: graphRef.value,
@@ -177,7 +249,7 @@ function buildGraph() {
         stroke: (d: any) => NODE_COLORS.stroke[d.data?.color_index ?? 0],
         strokeWidth: 2,
         labelText: (d: any) => d.data?.label || d.id,
-        labelFill: '#ffffff',
+        labelFill: '#000000',
         labelFontSize: 12,
         labelFontWeight: 500,
         labelFontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
@@ -198,20 +270,21 @@ function buildGraph() {
         strokeWidth: 2,
         lineDash: (d: any) => (d.data?.relation === 'related_to' ? [4, 4] : undefined),
         endArrow: true,
+        endArrowOffset: 6,
       },
       state: {
         hover: { strokeWidth: 3.5 },
       },
     },
-    layout: layoutMode.value === 'radial'
-      ? { type: 'concentric', sortBy: (d: any) => (2 - (d.data?.level ?? 2)), preventOverlap: true }
-      : {
-          type: 'dagre',
-          rankdir: 'TB',
-          nodesep: 30,
-          ranksep: 60,
-          sortByCombo: true,
-        },
+    ...(layoutMode.value === 'radial' ? {} : {
+      layout: {
+        type: 'dagre',
+        rankdir: 'TB',
+        nodesep: 30,
+        ranksep: 60,
+        sortByCombo: true,
+      },
+    }),
     behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element', 'hover-activate'],
   })
 
@@ -257,10 +330,24 @@ async function exportImage() {
   try {
     // G6 v5 用 toDataURL 导出，mode: 'overall' 导出整个画布
     const dataURL = await graphInstance.toDataURL({ type: 'image/png', mode: 'overall' })
-    const link = document.createElement('a')
-    link.download = `knowledge-graph-${Date.now()}.png`
-    link.href = dataURL
-    link.click()
+    // 叠加白色背景（G6 导出的 PNG 默认透明背景）
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0)
+      const finalURL = canvas.toDataURL('image/png')
+      const link = document.createElement('a')
+      link.download = `knowledge-graph-${Date.now()}.png`
+      link.href = finalURL
+      link.click()
+    }
+    img.src = dataURL
   } catch (e) {
     console.error('导出图片失败:', e)
   }
@@ -307,6 +394,22 @@ onBeforeUnmount(() => { graphInstance?.destroy() })
   align-items: center;
   gap: 6px;
   z-index: 10;
+}
+
+.kg-gap-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
+.kg-gap-label {
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
 }
 
 .kg-layout-btn {
