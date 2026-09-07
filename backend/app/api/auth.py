@@ -10,7 +10,8 @@
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
+import json
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -124,9 +125,30 @@ class UserResponse(BaseModel):
     major: str = ""
     grade: str = ""
     learning_goal: str = ""
+    age_range: str = ""
+    interests: List[str] = []
+    content_preferences: List[str] = []
+    onboarding_completed: bool = False
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_user(cls, user: User):
+        def parse_list(value):
+            try:
+                parsed = json.loads(value or "[]")
+                return parsed if isinstance(parsed, list) else []
+            except (TypeError, json.JSONDecodeError):
+                return []
+        return cls(
+            id=user.id, username=user.username, email=user.email, role=user.role,
+            major=user.major or "", grade=user.grade or "",
+            learning_goal=user.learning_goal or "", age_range=user.age_range or "",
+            interests=parse_list(user.interests),
+            content_preferences=parse_list(user.content_preferences),
+            onboarding_completed=bool(user.onboarding_completed),
+        )
 
 
 class ProfileUpdate(BaseModel):
@@ -135,6 +157,10 @@ class ProfileUpdate(BaseModel):
     major: Optional[str] = None
     grade: Optional[str] = None
     learning_goal: Optional[str] = None
+    age_range: Optional[str] = None
+    interests: Optional[List[str]] = None
+    content_preferences: Optional[List[str]] = None
+    onboarding_completed: Optional[bool] = None
 
 
 class TokenResponse(BaseModel):
@@ -175,7 +201,7 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     token = create_access_token(data={"sub": str(user.id)})
     return TokenResponse(
         access_token=token,
-        user=UserResponse.model_validate(user),
+        user=UserResponse.from_user(user),
     )
 
 
@@ -192,14 +218,14 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     token = create_access_token(data={"sub": str(user.id)})
     return TokenResponse(
         access_token=token,
-        user=UserResponse.model_validate(user),
+        user=UserResponse.from_user(user),
     )
 
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     """获取当前登录用户信息"""
-    return UserResponse.model_validate(current_user)
+    return UserResponse.from_user(current_user)
 
 
 @router.put("/me", response_model=UserResponse)
@@ -225,7 +251,15 @@ def update_me(
         current_user.grade = data.grade
     if data.learning_goal is not None:
         current_user.learning_goal = data.learning_goal
+    if data.age_range is not None:
+        current_user.age_range = data.age_range
+    if data.interests is not None:
+        current_user.interests = json.dumps(data.interests, ensure_ascii=False)
+    if data.content_preferences is not None:
+        current_user.content_preferences = json.dumps(data.content_preferences, ensure_ascii=False)
+    if data.onboarding_completed is not None:
+        current_user.onboarding_completed = data.onboarding_completed
 
     db.commit()
     db.refresh(current_user)
-    return UserResponse.model_validate(current_user)
+    return UserResponse.from_user(current_user)

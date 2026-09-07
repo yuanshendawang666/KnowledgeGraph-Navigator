@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_PROXY: str = ""
 
     # ---- JWT 认证配置 ----
     SECRET_KEY: str = "change-me-to-a-secure-random-string"
@@ -46,6 +47,12 @@ class Settings(BaseSettings):
     # ---- RAG 配置 ----
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
+    LIGHTRAG_LOCAL_TOP_K: int = 6
+    LIGHTRAG_GRAPH_TOP_K: int = 6
+    LIGHTRAG_GLOBAL_TOP_K: int = 4
+    SELF_RAG_ENABLED: bool = True
+    SELF_RAG_SCORE_THRESHOLD: float = 0.68
+    SELF_RAG_MAX_RETRIES: int = 1
 
     # ---- AI 出题配置 ----
     QUIZ_QUESTIONS_PER_KP: int = 5

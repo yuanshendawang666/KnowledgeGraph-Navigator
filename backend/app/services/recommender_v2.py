@@ -10,6 +10,7 @@
 """
 
 from typing import Dict, List, Optional
+import json
 
 from app.core.database import SessionLocal
 from app.models import User, KnowledgePoint, UserKnowledgeProgress
@@ -38,7 +39,7 @@ class EnhancedRecommender:
 
         recommendations: List[Dict] = []
         for kp in ready[:6]:
-            reason, confidence = self._build_reason(kp, mastered_ids, behavior, course_id)
+            reason, confidence = self._build_reason(kp, mastered_ids, behavior, course_id, user)
             recommendations.append({
                 "id": kp.get("id"),
                 "name": kp.get("label") or kp.get("name"),
@@ -89,7 +90,8 @@ class EnhancedRecommender:
         finally:
             db.close()
 
-    def _build_reason(self, kp: Dict, mastered_ids: set, behavior: Dict, course_id: int) -> tuple:
+    def _build_reason(self, kp: Dict, mastered_ids: set, behavior: Dict, course_id: int,
+                      user: Optional[User] = None) -> tuple:
         """根据图谱拓扑与用户状态生成推荐理由与置信度。"""
         kp_id = kp.get("id")
         # 关联拓展：该知识点与某个已掌握知识点相关
@@ -120,6 +122,18 @@ class EnhancedRecommender:
             reason += "（近期正确率偏低，建议放慢节奏、先巩固基础）"
             confidence = max(0.4, confidence - 0.1)
 
+        # 首次兴趣画像：命中知识点名称或描述时，提高推荐置信度并解释原因。
+        if user:
+            try:
+                interests = json.loads(user.interests or "[]")
+            except (TypeError, json.JSONDecodeError):
+                interests = []
+            text = f"{kp.get('label') or kp.get('name') or ''} {kp.get('description') or ''}".lower()
+            matched = [item for item in interests if str(item).lower() in text]
+            if matched:
+                reason += f"；与你选择的“{matched[0]}”兴趣方向相匹配"
+                confidence = min(0.98, confidence + 0.08)
+
         return reason, round(confidence, 2)
 
     @staticmethod
@@ -138,6 +152,17 @@ class EnhancedRecommender:
                 parts.append(f"年级：{user.grade}")
             if user.learning_goal:
                 parts.append(f"目标：{user.learning_goal}")
+            if user.age_range:
+                parts.append(f"阶段：{user.age_range}")
+            try:
+                interests = json.loads(user.interests or "[]")
+                preferences = json.loads(user.content_preferences or "[]")
+            except (TypeError, json.JSONDecodeError):
+                interests, preferences = [], []
+            if interests:
+                parts.append(f"兴趣：{'、'.join(interests[:3])}")
+            if preferences:
+                parts.append(f"偏好：{'、'.join(preferences[:2])}")
         if behavior.get("study_minutes"):
             parts.append(f"累计学习 {int(behavior['study_minutes'])} 分钟")
         return "，".join(parts) + "。" if parts else ""

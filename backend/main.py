@@ -60,6 +60,10 @@ def _migrate_user_columns():
             ("major", "VARCHAR(100) DEFAULT ''"),
             ("grade", "VARCHAR(50) DEFAULT ''"),
             ("learning_goal", "VARCHAR(200) DEFAULT ''"),
+            ("age_range", "VARCHAR(50) DEFAULT ''"),
+            ("interests", "TEXT DEFAULT '[]'"),
+            ("content_preferences", "TEXT DEFAULT '[]'"),
+            ("onboarding_completed", "BOOLEAN DEFAULT 0"),
         ]
         with engine.begin() as conn:
             for name, ddl in additions:

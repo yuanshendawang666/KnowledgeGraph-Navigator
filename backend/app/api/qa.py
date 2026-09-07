@@ -118,6 +118,7 @@ async def ask_question(
         "answer": result.get("answer", ""),
         "sources": references,
         "suggested_questions": result.get("suggested_questions", []),
+        "rag_meta": result.get("rag_meta", {}),
         "session_id": session.id if session else None,
     }
 

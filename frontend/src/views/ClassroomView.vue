@@ -3,13 +3,13 @@
     <!-- ══════════ 班级列表 ══════════ -->
     <template v-if="!currentCr">
       <header class="cr-header">
-        <h1 class="page-title">班级管理</h1>
+        <div><span class="section-kicker">一起学习 · 共同进步</span><h1 class="page-title">我的班级</h1><p class="header-caption">让课程、作业与每一次交流，在这里连接。</p></div>
         <el-button v-if="authStore.isTeacher" type="primary" @click="showCreate=true"><el-icon :size="14"><Plus /></el-icon> 创建班级</el-button>
       </header>
 
       <div v-if="classrooms.length" class="cr-grid">
         <div v-for="c in classrooms" :key="c.id" class="cr-card" @click="enterClassroom(c)">
-          <h3>{{ c.name }}</h3>
+          <span class="class-monogram">{{ c.name.slice(0, 1) }}</span><h3>{{ c.name }}</h3>
           <p class="cr-desc">{{ c.description || '暂无描述' }}</p>
           <div class="cr-meta">
             <span>邀请码: <code>{{ c.invite_code }}</code></span>
@@ -42,12 +42,14 @@
           <span>邀请码: <code>{{ currentCr.invite_code }}</code></span>
           <span>{{ currentCr.member_count }} 名成员</span>
         </div>
+        <div class="class-summary"><span><b>{{ linkedCourses.length }}</b> 关联课程</span><span><b>{{ tasks.length }}</b> 班级作业</span><span><b>{{ posts.length }}</b> 交流话题</span></div>
       </div>
 
       <el-tabs v-model="activeTab">
         <!-- ── 课程 ── -->
         <el-tab-pane label="课程" name="courses">
           <div v-if="authStore.isTeacher" class="inline-form course-link-panel">
+            <div class="panel-intro"><strong>把课程带进班级</strong><p>关联后，成员即可共同学习课程内容</p></div>
             <el-select v-model="linkCourseId" placeholder="选择要关联的课程" size="small" style="width:260px;margin-right:8px" clearable>
               <el-option v-for="c in myCourses" :key="c.id" :label="c.title" :value="c.id" />
             </el-select>
@@ -70,6 +72,7 @@
         <!-- ── 公告 ── -->
         <el-tab-pane label="公告" name="announcements">
           <div v-if="authStore.isTeacher" class="inline-form">
+            <div class="panel-intro"><strong>发布班级公告</strong><p>让重要通知及时传达给每一位同学</p></div>
             <el-input v-model="annForm.title" placeholder="公告标题" size="small" style="margin-bottom:6px" />
             <el-input v-model="annForm.content" type="textarea" :rows="2" placeholder="公告内容" size="small" style="margin-bottom:6px" />
             <el-button size="small" type="primary" @click="createAnnouncement">发布公告</el-button>
@@ -88,11 +91,12 @@
         <!-- ── 成员 ── -->
         <el-tab-pane label="成员" name="members">
           <div v-if="authStore.isTeacher" class="inline-form">
+            <div class="panel-intro"><strong>邀请同学加入</strong><p>通过用户名添加成员，也可以分享班级邀请码</p></div>
             <el-input v-model="addMemberName" placeholder="输入学生用户名添加" size="small" style="width:220px;margin-right:8px" />
             <el-button size="small" type="primary" @click="addMember">添加成员</el-button>
           </div>
           <div v-for="m in members" :key="m.id" class="member-row">
-            <span>{{ m.username }}</span>
+            <span class="member-identity"><span class="member-avatar">{{ m.username.slice(0,1) }}</span>{{ m.username }}</span>
             <el-button v-if="authStore.isTeacher" text size="small" type="danger" @click="removeMember(m.student_id)">移除</el-button>
           </div>
           <div v-if="!members.length" class="text-tertiary">暂无成员</div>
@@ -161,6 +165,7 @@
 
         <!-- ── 讨论区 ── -->
         <el-tab-pane label="讨论区" name="posts">
+          <div class="discussion-intro"><div><span class="section-kicker">班级交流空间</span><h2>好问题，值得一起讨论。</h2></div><span class="topic-count">{{ posts.length }} 个话题</span></div>
           <div class="inline-form discussion-composer">
             <div class="composer-heading"><div><strong>发起讨论</strong><span>分享问题、学习心得或课程相关信息</span></div><span class="composer-mark">✦</span></div>
             <div class="composer-fields">
@@ -203,7 +208,7 @@
     </el-dialog>
 
     <!-- 查看提交 -->
-    <el-dialog v-model="showSubmissions" title="任务提交情况" width="420px">
+    <el-dialog v-model="showSubmissions" title="作业提交情况" width="420px">
       <div v-for="s in submissions" :key="s.id" class="member-row">
         <span>{{ s.username }}</span>
         <span class="meta">{{ s.note || '（无备注）' }}</span>

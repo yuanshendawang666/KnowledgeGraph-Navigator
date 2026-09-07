@@ -96,6 +96,10 @@ class User(Base):
     major = Column(String(100), default="", comment="专业（计算机科学/数学/物理 等）")
     grade = Column(String(50), default="", comment="年级")
     learning_goal = Column(String(200), default="", comment="学习目标（应试/兴趣/考研 等）")
+    age_range = Column(String(50), default="", comment="年龄阶段")
+    interests = Column(Text, default="[]", comment="兴趣方向 JSON 数组")
+    content_preferences = Column(Text, default="[]", comment="内容偏好 JSON 数组")
+    onboarding_completed = Column(Boolean, default=False, comment="是否完成首次兴趣引导")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # 关系

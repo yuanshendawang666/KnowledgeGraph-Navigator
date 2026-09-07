@@ -8,6 +8,10 @@ export interface UserInfo {
   major?: string
   grade?: string
   learning_goal?: string
+  age_range?: string
+  interests?: string[]
+  content_preferences?: string[]
+  onboarding_completed?: boolean
   created_at?: string
 }
 
@@ -36,6 +40,10 @@ export const authAPI = {
     major?: string
     grade?: string
     learning_goal?: string
+    age_range?: string
+    interests?: string[]
+    content_preferences?: string[]
+    onboarding_completed?: boolean
   }) {
     return http.put('/auth/me', data) as Promise<UserInfo>
   },
