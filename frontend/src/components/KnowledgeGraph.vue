@@ -5,7 +5,9 @@
       <p class="kg-empty-title">暂无知识图谱数据</p>
       <p class="kg-empty-desc">上传文档并提取知识后，图谱将在此展示</p>
     </div>
-    <div v-show="hasData" ref="graphRef" class="kg-canvas"></div>
+    <div class="kg-scroll">
+      <div v-show="hasData" ref="graphRef" class="kg-canvas"></div>
+    </div>
 
     <!-- 关系图例 + 筛选 -->
     <div v-if="hasData" class="kg-legend">
@@ -33,10 +35,16 @@
         :class="{ active: layoutMode === 'radial' }"
         @click="setLayoutMode('radial')"
       >圆形图</button>
+      <button
+        class="kg-layout-btn"
+        :class="{ active: showLeaves }"
+        @click="toggleLeaves"
+      >显示全部知识点</button>
       <div v-if="layoutMode === 'radial'" class="kg-gap-control">
-        <span class="kg-gap-label">圈间距</span>
+        <span class="kg-gap-label">节点间距</span>
         <el-slider v-model="radialGap" :min="30" :max="160" :step="5" style="width: 120px" @change="buildGraph" />
       </div>
+      <button class="kg-layout-btn" @click="fitGraph">适应画布</button>
       <button class="kg-export-btn" @click="exportImage" title="导出为PNG图片">
         <el-icon :size="16"><Download /></el-icon> 导出图片
       </button>
@@ -66,9 +74,24 @@ let graphInstance: any = null
 
 const hasData = ref(false)
 
+let resizeObserver: ResizeObserver | undefined
+let buildVersion = 0
+const nodeScale = { value: 1 }
+
+async function fitGraph() {
+  await graphInstance?.fitView()
+}
+
 // 布局模式：tree=树状图, radial=圆形图
-const layoutMode = ref<'tree' | 'radial'>('tree')
+const layoutMode = ref<'tree' | 'radial'>('radial')
 const radialGap = ref(80)
+
+// 是否显示叶子知识点（默认只显示模块层级，避免节点过多挤成一团）
+const showLeaves = ref(false)
+function toggleLeaves() {
+  showLeaves.value = !showLeaves.value
+  buildGraph()
+}
 
 // 关系类型配置（与后端 relation 字段对应，后端返回大写，这里做归一化）
 const RELATION_META: Record<string, { label: string; color: string }> = {
@@ -119,73 +142,115 @@ function polarToXY(angle: number, radius: number, cx: number, cy: number) {
   return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) }
 }
 
-// 手动计算放射状位置：根模块在内圈、子模块在中圈、叶子在外圈，按根模块分扇区均匀分布 360°（完整圆形）
-function computeRadialPositions(nodes: any[], cx: number, cy: number, radii: number[]) {
-  const childMap = new Map<string, string[]>()
+// 按子树权重分配扇区，逐层计算足以容纳节点和标签的半径。
+// 缺失父节点、孤立节点及环形数据均作为独立分支，不叠放在圆心。
+function computeRadialPositions(nodes: any[], cx: number, cy: number) {
+  const byId = new Map(nodes.map(n => [String(n.id), n]))
+  const children = new Map<string, string[]>()
+  const parent = new Map<string, string>()
   for (const n of nodes) {
-    const pid = (n as any).parent_id
-    if (pid) {
-      if (!childMap.has(pid)) childMap.set(pid, [])
-      childMap.get(pid)!.push(n.id)
+    const pid = n.parent_id
+    if (pid != null && byId.has(String(pid)) && String(pid) !== String(n.id))
+      parent.set(String(n.id), String(pid))
+  }
+  for (const e of props.data?.edges || []) {
+    if (normalizeRelation(e.relation) === 'part_of' && byId.has(String(e.source))
+        && byId.has(String(e.target)) && e.source !== e.target && !parent.has(String(e.source)))
+      parent.set(String(e.source), String(e.target))
+  }
+  for (const [child, pid] of parent) {
+    if (!children.has(pid)) children.set(pid, [])
+    children.get(pid)!.push(child)
+  }
+  const seen = new Set<string>()
+  type Branch = { id: string; weight: number; children: Branch[] }
+  function visit(id: string): Branch | null {
+    if (seen.has(id)) return null
+    seen.add(id)
+    const subs = (children.get(id) || []).map(visit).filter((v): v is Branch => v !== null)
+    return { id, weight: Math.max(1, subs.reduce((sum, c) => sum + c.weight, 0)), children: subs }
+  }
+  const roots: Branch[] = []
+  for (const n of nodes) if (!parent.has(String(n.id))) {
+    const branch = visit(String(n.id))
+    if (branch) roots.push(branch)
+  }
+  for (const n of nodes) {
+    const branch = visit(String(n.id))
+    if (branch) roots.push(branch)
+  }
+  const rings: { id: string; angle: number }[][] = []
+  function place(branch: Branch, start: number, sweep: number, depth: number) {
+    ;(rings[depth] ||= []).push({ id: branch.id, angle: start + sweep / 2 })
+    let cursor = start
+    for (const child of branch.children) {
+      const part = sweep * child.weight / branch.weight
+      place(child, cursor, part, depth + 1)
+      cursor += part
     }
   }
-  const roots = nodes.filter((n: any) => (n as any).level === 0)
+  const total = roots.reduce((sum, r) => sum + r.weight, 0)
+  let cursor = -Math.PI / 2
+  for (const root of roots) {
+    const sweep = 2 * Math.PI * root.weight / total
+    place(root, cursor, sweep, 0)
+    cursor += sweep
+  }
   const positions = new Map<string, { x: number; y: number }>()
-  const [r1, r2, r3] = radii
-
-  const N = Math.max(roots.length, 1)
-  const rootSweep = (2 * Math.PI) / N
-
-  roots.forEach((root: any, i: number) => {
-    const start = i * rootSweep
-    positions.set(root.id, polarToXY(start + rootSweep / 2, r1, cx, cy))
-    const subs = childMap.get(root.id) || []
-    const subSweep = subs.length ? rootSweep / subs.length : rootSweep
-    subs.forEach((subId: string, j: number) => {
-      const subStart = start + j * subSweep
-      positions.set(subId, polarToXY(subStart + subSweep / 2, r2, cx, cy))
-      const leaves = childMap.get(subId) || []
-      const leafSweep = leaves.length ? subSweep / leaves.length : subSweep
-      leaves.forEach((leafId: string, k: number) => {
-        positions.set(leafId, polarToXY(subStart + k * leafSweep + leafSweep / 2, r3, cx, cy))
+  let previousRadius = 0
+  rings.forEach((ring, depth) => {
+    let radius = depth === 0 ? 0 : previousRadius + 180 + radialGap.value
+    if (ring.length > 1) {
+      ring.forEach((node, i) => {
+        const next = ring[(i + 1) % ring.length]!
+        const delta = (next.angle - node.angle + Math.PI * 2) % (Math.PI * 2)
+        // 标签限制为两行、每行约十字，预留包围盒对角线间距。
+        radius = Math.max(radius, (180 + radialGap.value) / (2 * Math.sin(delta / 2)))
       })
-    })
-  })
-
-  // 兜底：未放置的节点（如无父子关系的节点）放中心
-  for (const n of nodes) {
-    if (!positions.has(n.id)) {
-      positions.set(n.id, { x: cx, y: cy })
     }
-  }
+    for (const node of ring) positions.set(byId.get(node.id)!.id, polarToXY(node.angle, radius, cx, cy))
+    previousRadius = radius
+  })
   return positions
 }
 
-function buildGraph() {
+async function buildGraph() {
+  const version = ++buildVersion
   if (!graphRef.value || !props.data) return
   if (!props.data.nodes?.length) {
     hasData.value = false
+    graphInstance?.destroy()
+    graphInstance = null
     return
   }
 
   hasData.value = true
+  await nextTick()
+  if (version !== buildVersion || !graphRef.value) return
+
+  // 默认只显示模块层级（level 0/1），开启"显示全部知识点"后包含叶子（level 2）
+  const visibleNodes = showLeaves.value
+    ? props.data.nodes
+    : props.data.nodes.filter((n: any) => (n as any).level !== 2)
+  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id))
 
   if (graphInstance) {
     graphInstance.destroy()
     graphInstance = null
   }
 
-  // 按筛选条件过滤边
+  // 按筛选条件过滤边，且只保留两端节点都在的边
   const edges = (props.data.edges || []).filter((e) =>
     visibleRelations.value.includes(normalizeRelation(e.relation))
+    && visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target)
   )
 
-  // 按根模块分组，分配颜色索引（同一根模块下的节点同色）
+  // 按根模块分组，分配颜色索引（同一根模块下的节点同色，颜色数有限需取模）
   const rootColorIndex = new Map<string, number>()
-  for (const n of props.data.nodes) {
+  for (const n of visibleNodes) {
     const rid = (n as any).root_id || n.id
     if (!rootColorIndex.has(rid)) {
-      rootColorIndex.set(rid, rootColorIndex.size)
+      rootColorIndex.set(rid, rootColorIndex.size % NODE_COLORS.fill.length)
     }
   }
 
@@ -201,21 +266,13 @@ function buildGraph() {
   let manualPositions: Map<string, { x: number; y: number }> | null = null
   if (layoutMode.value === 'radial') {
     const w = graphRef.value.clientWidth || 800
-    const h = graphRef.value.clientHeight || 460
+    const h = graphRef.value.clientHeight || 500
     const cx = w / 2
     const cy = h / 2
-    const minDim = Math.min(w, h)
-    const r1 = minDim * 0.1
-    const r2 = r1 + radialGap.value
-    const r3 = r2 + radialGap.value
-    manualPositions = computeRadialPositions(
-      props.data.nodes,
-      cx, cy,
-      [r1, r2, r3],
-    )
+    manualPositions = computeRadialPositions(visibleNodes, cx, cy)
   }
 
-  const nodeList = props.data.nodes.map((n, i) => {
+  const nodeList = visibleNodes.map((n, i) => {
     const rid = (n as any).root_id || n.id
     const pos = manualPositions?.get(n.id)
     return {
@@ -241,16 +298,21 @@ function buildGraph() {
     data,
     width: graphRef.value.clientWidth,
     height: graphRef.value.clientHeight || 500,
+    // 模块模式 1:1 居中显示（画布已按需求放大，容器内滚动）；全显模式缩放到视口
     autoFit: 'view',
+    padding: 36,
     node: {
       style: {
-        size: (d: any) => Math.max(30, Math.min(48, ((d.data?.label || d.id || '').length || 3) * 2 + 26)),
+        size: (d: any) => Math.max(24, Math.min(48, ((d.data?.label || d.id || '').length || 3) * 2 + 26)) * nodeScale.value,
         fill: (d: any) => NODE_COLORS.fill[d.data?.color_index ?? 0],
         stroke: (d: any) => NODE_COLORS.stroke[d.data?.color_index ?? 0],
         strokeWidth: 2,
         labelText: (d: any) => d.data?.label || d.id,
         labelFill: '#000000',
-        labelFontSize: 12,
+        labelFontSize: 13,
+        labelWordWrap: true,
+        labelMaxWidth: 140,
+        labelMaxLines: 2,
         labelFontWeight: 500,
         labelFontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
         labelPlacement: 'bottom',
@@ -280,8 +342,8 @@ function buildGraph() {
       layout: {
         type: 'dagre',
         rankdir: 'TB',
-        nodesep: 30,
-        ranksep: 60,
+        nodesep: 150,
+        ranksep: 120,
         sortByCombo: true,
       },
     }),
@@ -323,7 +385,15 @@ watch(() => props.data, async () => {
   buildGraph()
 }, { deep: true })
 
-onMounted(() => { buildGraph() })
+onMounted(() => {
+  buildGraph()
+  resizeObserver = new ResizeObserver(() => {
+    if (!graphInstance || !graphRef.value) return
+    const { clientWidth: width, clientHeight: height } = graphRef.value
+    if (width > 0 && height > 0) graphInstance.setSize(width, height)
+  })
+  if (graphRef.value) resizeObserver.observe(graphRef.value)
+})
 
 async function exportImage() {
   if (!graphInstance) return
@@ -353,12 +423,16 @@ async function exportImage() {
   }
 }
 
-onBeforeUnmount(() => { graphInstance?.destroy() })
+onBeforeUnmount(() => { buildVersion++; resizeObserver?.disconnect(); graphInstance?.destroy() })
 </script>
 
 <style scoped>
 .kg-container {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
   min-height: 400px;
   border-radius: var(--radius-lg);
@@ -367,10 +441,16 @@ onBeforeUnmount(() => { graphInstance?.destroy() })
   overflow: hidden;
 }
 
+.kg-scroll {
+  width: 100%;
+  order: 3;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .kg-canvas {
   width: 100%;
-  height: 100%;
-  min-height: 460px;
+  height: clamp(420px, 65vh, 760px);
 }
 
 .kg-empty {
@@ -387,9 +467,10 @@ onBeforeUnmount(() => { graphInstance?.destroy() })
 .kg-empty-desc { font-size: var(--font-size-sm); color: var(--color-text-tertiary); margin: 0; }
 
 .kg-toolbar {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  position: relative;
+  padding: 10px 14px;
+  flex-wrap: wrap;
+  order: 2;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -446,9 +527,12 @@ onBeforeUnmount(() => { graphInstance?.destroy() })
 .kg-export-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
 
 .kg-legend {
-  position: absolute;
-  top: 8px;
-  left: 8px;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  order: 1;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
