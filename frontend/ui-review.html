@@ -1,0 +1,33 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>界面校验（模拟数据）</title><div id="app"></div><script type="module">
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import { createRouter, createMemoryHistory } from 'vue-router';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+import './src/styles/global.css';
+import Classroom from './src/views/ClassroomView.vue';
+import Courses from './src/views/CourseListView.vue';
+import Quiz from './src/views/TeacherQuizView.vue';
+import { useAuthStore } from './src/stores/auth';
+import http from './src/api/index';
+const courses=[{id:1,title:'Python 程序设计',description:'从变量与数据类型出发，学习程序设计方法与实践，构建清晰的课程知识体系。',teacher_id:1,teacher_name:'王老师',knowledge_point_count:217,document_count:8},{id:2,title:'数据结构与算法',description:'理解常用数据结构，在问题求解中掌握算法设计。',teacher_id:1,teacher_name:'王老师',knowledge_point_count:86,document_count:5},{id:3,title:'计算机网络基础',description:'认识网络协议与通信原理，连接理论与应用。',teacher_id:1,teacher_name:'王老师',knowledge_point_count:64,document_count:4}];
+const questions=[{id:1,content:'下列关于 Python 列表与元组的描述，正确的是哪一项？',difficulty:'basic',question_type:'single_choice',knowledge_point_name:'列表与元组',is_active:true,options:['A. 列表和元组都不能修改','B. 列表可变，元组不可变','C. 只有元组可以嵌套','D. 列表只能保存同一种类型'],correct_answer:'B',explanation:'列表支持添加、删除或替换元素；元组的元素引用在创建后不能修改。'},{id:2,content:'下面哪些是 Python 中的基本数据类型？（多选）',difficulty:'advanced',question_type:'multiple_choice',knowledge_point_name:'数据类型',is_active:true,options:['A. 整数','B. 浮点数','C. 字符串','D. 布尔值'],correct_answer:'A,B,C,D'}];
+http.defaults.adapter=async config=>{
+ const u=config.url || ''; let data=[];
+ if(u==='/courses/')data=courses;
+ else if(u==='/courses/1')data={...courses[0],knowledge_points:[{id:1,name:'列表与元组'}]};
+ else if(u==='/classrooms/')data=[{id:1,name:'Python 程序设计 · 一班',description:'在实践中理解知识，让每一个问题都有回应。',invite_code:'PY2026',member_count:32},{id:2,name:'数据结构学习小组',description:'共同探索算法与数据结构。',invite_code:'DS2026',member_count:18}];
+ else if(u.includes('questions'))data=questions;
+ else if(u.endsWith('/courses'))data=courses.slice(0,2);
+ else if(u.endsWith('/announcements'))data=[{id:1,title:'本周学习安排',content:'请完成列表与元组相关知识点学习，并在周五前提交练习。',author:'王老师',created_at:'2026-09-07'}];
+ else if(u.endsWith('/members'))data=[{id:1,student_id:2,username:'陈同学'},{id:2,student_id:3,username:'李同学'}];
+ else if(u.endsWith('/ranking'))data={ranking:[{student_id:2,rank:1,username:'陈同学',average_mastery:.85}]};
+ else if(u.endsWith('/tasks'))data=[{id:1,title:'Python 基础巩固练习',description:'完成变量、列表与元组相关练习，并整理学习笔记。',submitted_count:24,total_members:32,course_id:1}];
+ else if(u.endsWith('/stats'))data={average_progress:.72,knowledge_points:[{knowledge_point_id:1,name:'列表与元组',mastery_rate:.85}]};
+ else if(u.endsWith('/posts'))data=[{id:1,title:'列表和元组应该怎么选择？',content:'在实际项目中，什么时候使用元组会更合适？想听听大家的理解。',author:'陈同学',created_at:'2026-09-07',comments:[{id:1,author:'王老师',content:'可以从数据是否需要修改，以及是否表示固定结构这两方面考虑。'}]},{id:2,title:'分享本周的学习笔记',content:'把易混淆的数据类型整理成了对照表，欢迎一起交流。',author:'李同学',created_at:'2026-09-06',comments:[]}];
+ return {data,status:200,statusText:'OK',headers:{},config};
+};
+const pinia=createPinia();const kind=new URLSearchParams(location.search).get('page');
+const app=createApp(kind==='courses'?Courses:kind==='quiz'?Quiz:Classroom);app.use(pinia);app.use(createRouter({history:createMemoryHistory(),routes:[]}));app.use(ElementPlus);
+useAuthStore().user={id:1,username:'王老师',role:'teacher'};app.mount('#app');
+</script><style>body{margin:0;background:#f5f7f4}#app{padding:32px;max-width:1250px;margin:auto}@media(max-width:600px){#app{padding:16px}}</style></html>

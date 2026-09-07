@@ -699,7 +699,7 @@ onMounted(fetchCourse)
 /* 内容区 */
 .detail-content {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: var(--space-6);
   align-items: start;
 }
@@ -713,9 +713,11 @@ onMounted(fetchCourse)
   margin-bottom: var(--space-5);
 }
 
-.graph-section { padding: var(--space-5); }
+.graph-section { padding: var(--space-5); min-width: 0; }
+.detail-content > * { min-width: 0; }
 
 .section-header {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -3,11 +3,11 @@
     <button class="back-link" @click="$router.back()"><el-icon :size="16"><ArrowLeft /></el-icon> 返回</button>
 
     <header class="tq-header">
-      <h1 class="page-title">题库管理</h1>
+      <span class="section-kicker">教学资源工作台</span><h1 class="page-title">题库管理</h1>
       <p class="page-sub">AI 生成、审核与管理课程题目（仅教师）</p>
     </header>
 
-    <div class="tq-toolbar">
+    <div class="tq-toolbar"><div class="filter-heading"><strong>筛选题目</strong><span>按课程、知识点与难度定位教学内容</span></div>
       <el-select v-model="courseId" placeholder="选择课程" style="width: 240px" @change="onCourseChange">
         <el-option v-for="c in courses" :key="c.id" :label="c.title" :value="c.id" />
       </el-select>
@@ -22,9 +22,10 @@
       <el-button :disabled="!courseId" @click="loadStats">使用统计</el-button>
     </div>
 
+    <div class="list-heading"><strong>课程题目</strong><span>当前筛选 {{ questions.length }} 道 · 已启用 {{ questions.filter(q => q.is_active).length }} 道</span></div>
     <div class="tq-list" v-loading="loading">
-      <div v-for="q in questions" :key="q.id" class="tq-item">
-        <div class="tq-item-main">
+      <div v-for="(q, index) in questions" :key="q.id" class="tq-item">
+        <span class="question-index">{{ String(index + 1).padStart(2, '0') }}</span><div class="tq-item-main">
           <div class="tq-item-tags">
             <el-tag size="small" :type="q.difficulty === 'advanced' ? 'warning' : 'info'">{{ q.difficulty === 'advanced' ? '提高' : '基础' }}</el-tag>
             <el-tag size="small" type="success">{{ typeLabel(q.question_type) }}</el-tag>
@@ -32,7 +33,9 @@
             <el-tag size="small" :type="q.is_active ? 'success' : 'danger'" effect="plain">{{ q.is_active ? '已启用' : '已停用' }}</el-tag>
           </div>
           <div class="tq-item-content">{{ q.content }}</div>
-          <div class="tq-item-answer">答案：{{ q.correct_answer }}</div>
+          <div v-if="q.options?.length" class="tq-options"><div v-for="(option, optionIndex) in q.options" :key="optionIndex">{{ option }}</div></div>
+          <div class="tq-item-answer"><span>参考答案</span>{{ q.correct_answer || '未设置' }}</div>
+          <details v-if="q.explanation" class="tq-explanation"><summary>查看解析</summary><p>{{ q.explanation }}</p></details>
         </div>
         <div class="tq-item-actions">
           <el-button text size="small" @click="openEdit(q)">编辑</el-button>
@@ -42,12 +45,12 @@
       </div>
 
       <div v-if="!loading && !questions.length" class="empty-state">
-        <p>暂无题目，选择课程后点击「AI 生成题目」。</p>
+        <div class="empty-symbol">?</div><strong>{{ courseId ? '当前筛选暂无题目' : '先选择一门课程' }}</strong><p>{{ courseId ? '调整筛选条件，或使用 AI 生成新的练习题。' : '在这里集中审核题目、查看答案并管理使用状态。' }}</p>
       </div>
     </div>
 
     <!-- AI 生成 -->
-    <el-dialog v-model="genVisible" title="AI 生成题目" width="520px" destroy-on-close>
+    <el-dialog v-model="genVisible" title="AI 生成题目" width="min(540px, 94vw)" destroy-on-close>
       <el-form label-position="top">
         <el-form-item label="知识点">
           <el-select v-model="genForm.knowledge_point_id" placeholder="选择知识点" style="width:100%">
@@ -71,7 +74,7 @@
     </el-dialog>
 
     <!-- 编辑题目 -->
-    <el-dialog v-model="editVisible" title="编辑题目" width="640px" destroy-on-close>
+    <el-dialog v-model="editVisible" title="编辑题目" width="min(720px, 94vw)" destroy-on-close>
       <div class="edit-dialog-intro"><span class="edit-dialog-icon">✎</span><div><strong>完善题目内容</strong><p>修改后会立即更新题库，学生下次练习即可看到。</p></div></div>
       <el-form label-position="top" class="edit-form">
         <el-form-item label="题干" required><el-input v-model="editForm.content" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="请输入题目描述" /></el-form-item>
@@ -85,7 +88,7 @@
     </el-dialog>
 
     <!-- 使用统计 -->
-    <el-dialog v-model="statsVisible" title="题目使用统计" width="640px">
+    <el-dialog v-model="statsVisible" title="题目使用统计" width="min(720px, 94vw)">
       <div v-for="s in stats" :key="s.question_id" class="stats-row">
         <span class="stats-content">{{ s.content }}</span>
         <span class="stats-num">{{ s.attempt_count }}次 · 正确率{{ Math.round(s.accuracy * 100) }}%</span>
@@ -236,23 +239,65 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.tq-view { max-width: 1000px; margin: 0 auto; }
-.back-link { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; color: #64748b; cursor: pointer; margin-bottom: 16px; }
-.tq-header { margin-bottom: 20px; }
-.page-title { font-size: 24px; font-weight: 700; margin: 0; }
-.page-sub { font-size: 13px; color: #64748b; margin: 4px 0 0; }
-.tq-toolbar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.tq-list { display: flex; flex-direction: column; gap: 12px; }
-.tq-item { display: flex; align-items: flex-start; justify-content: space-between; background: #fff; border: 1.5px solid #93c5fd; border-radius: 12px; padding: 14px; gap: 12px; }
-.edit-dialog-intro{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:20px;border:1px solid #fbcfe8;border-radius:12px;background:#fff7fb}.edit-dialog-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#fce7f3;color:#be185d;font-size:20px}.edit-dialog-intro strong{color:#831843}.edit-dialog-intro p{margin:3px 0 0;color:#9d174d;font-size:12px}.edit-form :deep(.el-form-item){margin-bottom:18px}.edit-form :deep(.el-form-item__label){color:#334155;font-weight:600}.edit-form :deep(.el-textarea__inner),.edit-form :deep(.el-input__wrapper){border-radius:10px}.edit-form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}.edit-form-row .el-form-item{min-width:0}@media(max-width:620px){.edit-form-row{grid-template-columns:1fr}}
+.tq-view { max-width: 1160px; margin: 0 auto; padding: 6px 0 40px; color: #4a3d48; --el-color-primary: #b34f79; --el-color-primary-light-9: #fcf0f5; }
+.back-link { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #8b998e; padding: 0; margin-bottom: 20px; cursor: pointer; font: inherit; font-size: 12px; }
+.tq-header { margin-bottom: 28px; }
+.section-kicker { color: #b34f79; font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+.page-title { font-size: 30px; color: #4c3045; margin: 6px 0; letter-spacing: -.7px; }
+.page-sub { font-size: 14px; color: #819087; margin: 8px 0 0; }
+.tq-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 22px; background: #fff; border: 1px solid #e0e8e2; border-radius: 12px; margin-bottom: 26px; }
+.filter-heading { flex-basis: 100%; display: flex; align-items: baseline; flex-wrap: wrap; gap: 14px; margin-bottom: 5px; }
+.filter-heading strong { font-size: 15px; }
+.filter-heading span { font-size: 12px; color: #8c9a90; }
+.tq-view :deep(.el-button) { border-radius: 8px; box-shadow: none; font-weight: 600; }
+.tq-view :deep(.el-button--primary:not(.is-text)) { background: #b34f79; border-color: #b34f79; }
+.tq-view :deep(.el-select__wrapper), .tq-view :deep(.el-input__wrapper) { min-height: 40px; border-radius: 8px; box-shadow: 0 0 0 1px #dce6df inset; }
+.tq-view :deep(.el-textarea__inner) { line-height: 1.75; padding: 12px; border-radius: 8px; box-shadow: 0 0 0 1px #dce6df inset; }
+.tq-toolbar .el-select { max-width: 100%; }
+.list-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap; margin-bottom: 16px; }
+.list-heading strong { font-size: 16px; }
+.list-heading span { font-size: 12px; color: #8c998f; }
+.tq-list { display: grid; gap: 16px; min-height: 140px; }
+.tq-item { display: flex; gap: 20px; align-items: flex-start; background: #fff; border: 1px solid #e0e8e2; border-radius: 12px; padding: 24px; }
+.question-index { flex: none; font-size: 22px; font-family: Georgia, serif; color: #a4b6a8; line-height: 1.3; min-width: 26px; }
 .tq-item-main { flex: 1; min-width: 0; }
-.tq-item-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-.tq-item-content { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
-.tq-item-answer { font-size: 12px; color: #16a34a; }
-.tq-item-actions { display: flex; flex-direction: column; flex-shrink: 0; }
-.empty-state { text-align: center; padding: 60px; color: #94a3b8; }
-.stats-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
-.stats-content { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stats-num { flex-shrink: 0; color: #64748b; margin-left: 12px; }
-.text-tertiary { color: #94a3b8; font-size: 13px; }
+.tq-item-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+.tq-item-tags :deep(.el-tag) { border: 0; border-radius: 5px; font-size: 11px; font-weight: 500; }
+.tq-item-content { font-size: 16px; color: #453443; line-height: 1.8; font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 14px; }
+.tq-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin-bottom: 16px; }
+.tq-options > div { background: #f6f8f5; border-radius: 6px; padding: 10px 12px; color: #78877b; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.tq-item-answer { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; color: #357657; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.tq-item-answer span { color: #93a194; font-size: 12px; font-weight: 400; }
+.tq-explanation { margin-top: 12px; font-size: 13px; color: #80917f; line-height: 1.8; }
+.tq-explanation summary { color: #618167; cursor: pointer; width: fit-content; }
+.tq-explanation p { background: #f7faf5; padding: 12px; border-radius: 7px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tq-item-actions { display: flex; flex-direction: column; flex-shrink: 0; padding-left: 12px; border-left: 1px solid #eef2ed; }
+.tq-item-actions .el-button { margin-left: 0; }
+.edit-dialog-intro { display: flex; gap: 14px; align-items: center; padding: 18px; margin-bottom: 22px; border-radius: 10px; background: #eff6f0; }
+.edit-dialog-icon { color: #638b6b; font-size: 26px; }
+.edit-dialog-intro strong { color: #42654b; }
+.edit-dialog-intro p { font-size: 12px; color: #8a9b8c; margin: 5px 0 0; }
+.edit-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.edit-form-row .el-form-item { min-width: 0; }
+.empty-state { padding: 50px 24px; border: 1px dashed #d8e3d8; border-radius: 12px; background: #fafcf9; text-align: center; color: #87988a; }
+.empty-symbol { display: grid; place-items: center; width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 14px; background: #eaf1e7; color: #7d9b79; font-size: 26px; }
+.empty-state strong { font-size: 17px; color: #577052; }
+.empty-state p { font-size: 13px; margin-top: 10px; }
+.stats-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #e6eee4; font-size: 13px; }
+.stats-content { flex: 1; min-width: 150px; overflow-wrap: anywhere; color: #637760; }
+.stats-num { color: #8da086; flex-shrink: 0; }
+.text-tertiary { padding: 30px; text-align: center; color: #8da086; }
+@media(max-width: 700px) { .tq-item { padding: 18px; gap: 12px; flex-wrap: wrap; } .tq-item-main { flex-basis: calc(100% - 48px); } .tq-item-actions { flex-direction: row; border-left: 0; border-top: 1px solid #edf1ec; padding: 8px 0 0; width: 100%; justify-content: flex-end; } .tq-options { grid-template-columns: 1fr; } .tq-toolbar .el-select { width: 100% !important; } .edit-form-row { grid-template-columns: 1fr; } .page-title { font-size: 25px; } }
+
+.tq-toolbar { background: #fffafc; border-color: #eddee5; }
+.question-index { color: #b99aa9; }
+.tq-options > div { background: #f7f8fb; color: #66738a; }
+.tq-item-answer { color: #518879; }
+.tq-item-tags :deep(.el-tag--success) { background: #eaf5ef; color: #508671; }
+.tq-item-tags :deep(.el-tag--info) { background: #edf2fb; color: #5679ac; }
+.tq-item-tags :deep(.el-tag--warning) { background: #fff2dc; color: #b38436; }
+.tq-item-tags :deep(.el-tag--danger) { background: #fcebef; color: #b26579; }
+.edit-dialog-intro { background: #fff4e8; }
+.edit-dialog-intro strong { color: #9b754b; }
+.edit-dialog-icon { color: #c79860; }
 </style>
