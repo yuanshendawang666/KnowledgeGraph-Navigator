@@ -99,5 +99,13 @@ async function remove(c:string){if(c!=='delete'||!selected.value)return;try{awai
 .rich-editor :deep(.note-image img) { display:block; width:100%; height:100%; max-width:none; min-width:80px; min-height:40px; margin:0; resize:none; pointer-events:none; }
 .rich-editor :deep(.note-image img) { pointer-events:auto; }
 .rich-editor :deep(.note-image:active) { cursor:grabbing; outline:2px solid #93c5fd; outline-offset:2px; }
+.editor-header { background:linear-gradient(90deg,#e0f4f2,#fff 75%); border-bottom-color:#cce6e4; }
+.toolbar { background:#edf8f7; border-color:#d1e9e6; }
+.toolbar button:hover { background:#ccebe7; color:#087f88; }
+.new-page { background:#087f88; color:white; border-color:#087f88; }
+.new-page:hover { background:#076c74; }
+.page.selected,.picker-card .page.selected { background:#e0f4f2; color:#087f88; border-left-color:#087f88; box-shadow:inset 3px 0 #087f88; }
+.page.selected b,.editor-empty>.el-icon { color:#087f88; }
+.editor-empty { background:linear-gradient(135deg,#e6f5f3,#f5f8fd 60%,#fff2e3); }
 </style>
 

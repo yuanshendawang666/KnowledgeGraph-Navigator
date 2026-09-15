@@ -467,68 +467,29 @@ function saveProfile() {
 
 .fade-enter-active, .fade-leave-active { transition: opacity var(--duration-fast) var(--ease-out); }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-/* 统一壳层：导航承担结构，不承担装饰拼色 */
-.sidebar { background:linear-gradient(180deg,#f7fbff 0%,#f9fbf7 56%,#fff9ef 100%); border-right:1px solid #dfe8e1; }
-.sidebar-brand { background:linear-gradient(135deg,#f0f6ff,#f1fbf3 58%,#fff8ec); border-bottom:1px solid #e3e9e3; }
-.brand-text { color:#2454a6; }
-.sidebar-nav { background:linear-gradient(180deg,rgba(226,237,255,.72),rgba(238,249,240,.62) 62%,rgba(255,247,232,.6)); padding:18px 12px; gap:8px; }
-.nav-item,.nav-courses,.nav-qa,.nav-notes,.nav-classroom { background:transparent; border-left:3px solid transparent; color:#64748b; }
-.nav-item:hover { background:#fff; border-left-color:#bbf7d0; color:#334155; }
-.nav-item.active { box-shadow:0 2px 8px rgba(15,23,42,.05); }
-.nav-courses.active { background:#eff6ff; border-left-color:#3b82f6; color:#1d4ed8; }
-.nav-qa.active { background:#fff7ed; border-left-color:#f59e0b; color:#c2410c; }
-.nav-notes.active { background:#ecfdf3; border-left-color:#22c55e; color:#166534; }
-.nav-classroom.active { background:#f5f3ff; border-left-color:#8b5cf6; color:#6d28d9; }
-.nav-icon,.courses-icon,.qa-icon,.notes-icon,.classroom-icon { background:#fff; color:#64748b; box-shadow:none; }
-.nav-courses.active .nav-icon { background:#dbeafe; color:#2563eb; }
-.nav-qa.active .nav-icon { background:#fed7aa; color:#ea580c; }
-.nav-notes.active .nav-icon { background:#dcfce7; color:#15803d; }
-.nav-classroom.active .nav-icon { background:#ede9fe; color:#7c3aed; }
-.nav-courses .nav-icon { background:#eff6ff; color:#2563eb; }
-.nav-qa .nav-icon { background:#fff7ed; color:#ea580c; }
-.nav-notes .nav-icon { background:#ecfdf3; color:#16a34a; }
-.nav-classroom .nav-icon { background:#f5f3ff; color:#7c3aed; }
-.nav-courses:hover { background:#f8fbff; }
-.nav-qa:hover { background:#fffaf5; }
-.nav-notes:hover { background:#f5fcf7; }
-.nav-classroom:hover { background:#faf9ff; }
-.nav-courses { background:#f5f9ff; }
-.nav-qa { background:#fffaf4; }
-.nav-notes { background:#f4fbf6; }
-.nav-classroom { background:#faf8ff; }
-.sidebar-user { background:#fbfcfa; border-top:1px solid #edf0eb; }
-.user-card { background:#fff; border-color:#e4e8e2; box-shadow:0 4px 14px rgba(15,23,42,.04); }
-.sidebar-footer { background:#fbfcfa; border-top:1px solid #edf0eb; }
-.collapse-btn { background:#f1f4ef; color:#94a3b8; }
-.collapse-btn:hover { background:#ecfdf3; color:#15803d; }
-.nav-practice { background:#fff7fb; }
-.practice-icon { background:#fce7f3 !important; color:#db2777 !important; }
-.nav-practice:hover { background:#fdf2f8; color:#be185d; border-left-color:#ec4899; }
-.nav-practice.active { background:#fce7f3; color:#9d174d; border-left-color:#db2777; font-weight:600; }
-.nav-practice.active .practice-icon { background:#f9a8d4 !important; color:#9d174d !important; }
-.sidebar { background:#f7fbff; }
-.sidebar-brand { background:#f7fbff; }
-.sidebar-nav { background:#f7fbff; }
-.sidebar-user { background:#f7fbff; }
-.sidebar-footer { background:#f7fbff; }
-.nav-courses { background:#dbeafe !important; color:#1e3a8a !important; }
-.nav-courses .nav-icon { background:#93c5fd !important; color:#1e40af !important; }
-.nav-qa { background:#ffedd5 !important; color:#9a3412 !important; }
-.nav-qa .nav-icon { background:#fdba74 !important; color:#9a3412 !important; }
-.nav-notes { background:#dcfce7 !important; color:#166534 !important; }
-.nav-notes .nav-icon { background:#86efac !important; color:#166534 !important; }
-.nav-practice { background:#fce7f3 !important; color:#9d174d !important; }
-.nav-practice .nav-icon { background:#f9a8d4 !important; color:#9d174d !important; }
-.nav-classroom { background:#ede9fe !important; color:#5b21b6 !important; }
-.nav-classroom .nav-icon { background:#c4b5fd !important; color:#5b21b6 !important; }
-.nav-item.active { box-shadow:0 5px 14px rgba(15,23,42,.12); font-weight:700; }
-.nav-courses.active { border-left-color:#1d4ed8; background:#bfdbfe !important; }
-.nav-qa.active { border-left-color:#c2410c; background:#fed7aa !important; }
-.nav-notes.active { border-left-color:#15803d; background:#bbf7d0 !important; }
-.nav-practice.active { border-left-color:#be185d; background:#f9a8d4 !important; }
-.nav-classroom.active { border-left-color:#6d28d9; background:#ddd6fe !important; }
-.sidebar.collapsed .sidebar-nav { padding-left:10px; padding-right:10px; align-items:center; }
-.sidebar.collapsed .nav-item { width:44px; height:48px; padding:0; justify-content:center; gap:0; border-left:0; border-radius:14px; }
-.sidebar.collapsed .nav-item.active { box-shadow:0 4px 12px rgba(15,23,42,.14); }
-.sidebar.collapsed .nav-icon { width:36px; height:36px; }
+/* 彩色学习导航：每个模块沿用固定的识别色。 */
+.sidebar { background:#fff; border-right:1px solid #e0e7f2; }
+.sidebar-brand { height:64px; background:#f0f5ff; border-bottom:1px solid #dce7fa; }
+.brand-logo { width:32px; height:32px; }
+.sidebar-nav { background:linear-gradient(180deg,#fff,#f8faff); padding:22px 12px; gap:12px; overflow-y:auto; }
+.nav-courses { --nav-color:#3566cc; --nav-soft:#e6eeff; }
+.nav-qa { --nav-color:#b95617; --nav-soft:#ffedd8; }
+.nav-notes { --nav-color:#087f88; --nav-soft:#ddf3f1; }
+.nav-practice { --nav-color:#b23d70; --nav-soft:#fbe4ee; }
+.nav-classroom { --nav-color:#7150bc; --nav-soft:#eee6fc; }
+.nav-item { height:52px; background:var(--nav-soft); color:var(--nav-color); border:1px solid transparent; padding:8px 10px; border-radius:12px; }
+.nav-item .nav-icon { background:white; color:var(--nav-color); box-shadow:none; }
+.nav-item:hover { background:var(--nav-soft); color:var(--nav-color); border-color:var(--nav-color); }
+.nav-item.active { background:var(--nav-color); color:white; border-color:var(--nav-color); box-shadow:0 5px 12px color-mix(in srgb,var(--nav-color) 20%,transparent); }
+.nav-item.active .nav-icon { background:rgba(255,255,255,.2); color:white; }
+.sidebar-user,.sidebar-footer { background:#fff; border-top:1px solid #e8edf5; }
+.user-card { background:linear-gradient(135deg,#edf4ff,#fff5e8); border-color:#e0e7f0; }
+.edit-profile-btn { background:white; color:#506a93; border:1px solid #d8e2f2; }
+.collapse-btn { background:#eaf0fc; color:#48699f; }
+.sidebar.collapsed .sidebar-nav { padding:20px 10px; align-items:center; }
+.sidebar.collapsed .nav-item { width:44px; height:44px; padding:0; justify-content:center; gap:0; }
+.sidebar.collapsed .nav-icon { width:36px; height:36px; background:transparent; }
+.sidebar.collapsed .nav-item.active .nav-icon { background:transparent; }
+.nav-item:focus-visible { outline:2px solid var(--nav-color); outline-offset:3px; }
+@media(max-height:720px) { .user-card-details { display:none; } .sidebar-nav { gap:8px; padding-top:14px; } }
 </style>

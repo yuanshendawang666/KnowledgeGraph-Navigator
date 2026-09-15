@@ -241,7 +241,7 @@ onMounted(async () => {
 <style scoped>
 .tq-view { max-width: 1160px; margin: 0 auto; padding: 6px 0 40px; color: #4a3d48; --el-color-primary: #b34f79; --el-color-primary-light-9: #fcf0f5; }
 .back-link { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #8b998e; padding: 0; margin-bottom: 20px; cursor: pointer; font: inherit; font-size: 12px; }
-.tq-header { margin-bottom: 28px; }
+.tq-header { margin-bottom:28px; padding:26px; border-radius:18px; background:linear-gradient(110deg,#fbe1ed,#fff0f5 60%,#fff1d7); border:1px solid #f0d2e0; }
 .section-kicker { color: #b34f79; font-size: 12px; font-weight: 700; letter-spacing: 2px; }
 .page-title { font-size: 30px; color: #4c3045; margin: 6px 0; letter-spacing: -.7px; }
 .page-sub { font-size: 14px; color: #819087; margin: 8px 0 0; }

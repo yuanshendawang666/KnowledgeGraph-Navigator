@@ -1,5 +1,5 @@
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': collapsed }">
+  <div class="app-layout" :class="{ 'sidebar-collapsed': collapsed }" :data-theme="pageTheme">
     <Sidebar :collapsed="collapsed" @toggle="collapsed = !collapsed" />
     <div class="app-main">
       <Navbar @toggle-sidebar="collapsed = !collapsed" />
@@ -19,13 +19,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Sidebar from './Sidebar.vue'
 import Navbar from './Navbar.vue'
 import PreferenceOnboarding from './PreferenceOnboarding.vue'
 
 const auth = useAuthStore()
+const route = useRoute()
+const pageTheme = computed(() => {
+  const path = route.path
+  if (path.startsWith('/qa')) return 'amber'
+  if (path.startsWith('/notes')) return 'teal'
+  if (path.includes('practice') || path.includes('quiz-manage')) return 'rose'
+  if (path.startsWith('/classroom')) return 'violet'
+  return 'blue'
+})
 const collapsed = ref(false)
 const showPreferences = ref(false)
 

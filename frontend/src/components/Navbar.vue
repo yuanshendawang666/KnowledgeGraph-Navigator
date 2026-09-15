@@ -6,6 +6,7 @@
       </button>
       <span class="navbar-title">{{ pageTitle }}</span>
     </div>
+    <div class="navbar-context"><span class="context-dot"></span>知谱智航 · 学习工作台</div>
   </header>
 </template>
 
@@ -70,8 +71,11 @@ const pageTitle = computed(() => {
   color: var(--color-text-primary);
   letter-spacing: 0.02em;
 }
-.navbar { background:linear-gradient(90deg,#ffffff 0%,#f7fbff 58%,#fffaf2 100%); border-bottom:1px solid #dfe8e1; box-shadow:0 1px 0 rgba(15,23,42,.02); }
-.menu-toggle { background:linear-gradient(135deg,#eaf2ff,#eafbf0); color:#2563eb; }
-.menu-toggle:hover { background:#ecfdf3; color:#166534; }
+.navbar { height:64px; background:linear-gradient(90deg,var(--module-soft),#fff 72%); border-bottom:1px solid #e1e7f0; box-shadow:0 1px 0 rgba(15,23,42,.02); }
+.menu-toggle { background:var(--module-soft); color:var(--module-color); border:1px solid var(--module-line); }
+.menu-toggle:hover { background:var(--module-line); color:var(--module-color); }
+.navbar-context { display:flex; align-items:center; gap:8px; color:#64748b; font-size:12px; }
+.context-dot { width:8px; height:8px; background:var(--module-color); border-radius:50%; }
+@media(max-width:600px) { .navbar-context { display:none; } }
 .navbar-title { color:#243b53; font-weight:700; }
 </style>

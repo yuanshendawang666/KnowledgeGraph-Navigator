@@ -106,7 +106,7 @@ const auth = useAuthStore()
 const searchText = ref('')
 const filteredCourses = computed(() => { const keyword = searchText.value.trim().toLowerCase(); return courses.value.filter(c => `${c.title} ${c.description || ''}`.toLowerCase().includes(keyword)) })
 
-const ACCENTS = ['#477d70', '#547aa5', '#a18045', '#826c90']
+const ACCENTS = ['#3566cc', '#c17421', '#08858c', '#8253bf', '#bd4876']
 
 function cardAccent(idx: number) { return ACCENTS[idx % ACCENTS.length] }
 
@@ -216,8 +216,8 @@ onMounted(fetchCourses)
 
 .course-filter strong { color: #365c91; }
 .course-cover { height: 126px; }
-.course-card:nth-child(4n+1) { --card-accent: #3d78cc !important; }
-.course-card:nth-child(4n+2) { --card-accent: #c18c38 !important; }
-.course-card:nth-child(4n+3) { --card-accent: #5b9c90 !important; }
-.course-card:nth-child(4n) { --card-accent: #9b7cc0 !important; }
+.page-header { padding:26px; border-radius:18px; background:linear-gradient(110deg,#e2edff,#edf4ff 60%,#fff0d8); border:1px solid #d5e3fa; }
+.course-cover { background:color-mix(in srgb,var(--card-accent) 18%,white); }
+.course-card-desc,.course-card-meta { color:#68778e; }
+@media(max-width:700px) { .page-header { padding:20px; flex-wrap:wrap; } }
 </style>

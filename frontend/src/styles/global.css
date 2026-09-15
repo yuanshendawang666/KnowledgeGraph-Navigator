@@ -261,35 +261,35 @@ body {
 
 /* ── 产品级统一视觉覆盖 ── */
 :root {
-  --color-brand-50: #effaf2;
-  --color-brand-100: #dcfce7;
-  --color-brand-200: #bbf7d0;
-  --color-brand-300: #86efac;
-  --color-brand-400: #4ade80;
-  --color-brand-500: #22c55e;
-  --color-brand-600: #16a34a;
-  --color-brand-700: #15803d;
-  --color-brand-800: #166534;
-  --color-brand-900: #14532d;
-  --color-surface-overlay: #f6f7f5;
-  --color-surface-raised: #fbfcfa;
-  --color-border-default: #e4e8e2;
-  --color-border-subtle: #edf0eb;
+  --color-surface-overlay: #f3f6fc;
+  --color-surface-raised: #f8faff;
+  --color-border-default: #dce3ef;
+  --color-border-subtle: #edf0f6;
+  --color-text-tertiary: #748299;
+  --color-text-placeholder: #8b98ad;
+  --module-color: #3566cc;
+  --module-soft: #eaf1ff;
+  --module-line: #ccdcfc;
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, .03);
   --shadow-md: 0 5px 18px rgba(15, 23, 42, .06);
   --shadow-lg: 0 12px 32px rgba(15, 23, 42, .08);
 }
 
-body { background:linear-gradient(135deg,#f5f8ff 0%,#f8fbf8 48%,#fffaf2 100%); }
+body { background:#f3f6fc; }
 .app-layout { background:transparent; }
-.app-content { background:radial-gradient(circle at 90% 0%,rgba(219,234,254,.42),transparent 26%),radial-gradient(circle at 10% 100%,rgba(220,252,231,.3),transparent 24%); }
-.el-button--primary { --el-button-bg-color: #16a34a; --el-button-border-color: #16a34a; --el-button-hover-bg-color: #15803d; --el-button-hover-border-color: #15803d; --el-button-active-bg-color: #166534; --el-button-active-border-color: #166534; }
+.app-main { background:linear-gradient(145deg,var(--module-soft),#f5f7fb 44%,#fff8ef); }
+.app-layout[data-theme="amber"] { --module-color:#b95617; --module-soft:#fff0dd; --module-line:#f6d7ad; }
+.app-layout[data-theme="teal"] { --module-color:#087f88; --module-soft:#e1f5f4; --module-line:#b4e4e1; }
+.app-layout[data-theme="rose"] { --module-color:#b23d70; --module-soft:#fce8f0; --module-line:#f2c7d9; }
+.app-layout[data-theme="violet"] { --module-color:#7150bc; --module-soft:#eee9fc; --module-line:#d8cbf3; }
+.app-layout { --el-color-primary:var(--module-color); --el-color-primary-light-9:var(--module-soft); --el-color-primary-light-7:var(--module-line); }
+.el-button--primary { --el-button-bg-color:var(--module-color); --el-button-border-color:var(--module-color); --el-button-hover-bg-color:color-mix(in srgb,var(--module-color),black 12%); --el-button-hover-border-color:var(--el-button-hover-bg-color); --el-button-active-bg-color:var(--el-button-hover-bg-color); --el-button-active-border-color:var(--el-button-hover-bg-color); }
 .el-input__wrapper, .el-textarea__inner { background: #fff; }
 .el-dialog { box-shadow: 0 24px 70px rgba(15,23,42,.16); }
 .el-overlay { background-color: rgba(15,23,42,.28); }
 .el-card { box-shadow: var(--shadow-sm); }
-.el-button--primary { box-shadow:0 5px 14px rgba(34,197,94,.16); }
-.el-button--primary:hover { transform:translateY(-1px); box-shadow:0 7px 18px rgba(34,197,94,.22); }
+.el-button--primary { box-shadow:0 4px 10px color-mix(in srgb,var(--module-color) 18%,transparent); }
+.el-button--primary:hover { box-shadow:0 6px 16px color-mix(in srgb,var(--module-color) 24%,transparent); }
 .el-empty__image { opacity:.82; }
 
 .el-message {

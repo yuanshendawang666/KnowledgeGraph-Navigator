@@ -479,7 +479,7 @@ function renderMarkdown(text: string): string {
 
 <style scoped>
 .cr {
-  --class-accent: #456fc2;
+  --class-accent: #7150bc;
   --class-border: #e1e8e6;
   --el-color-primary: #456fc2;
   --el-color-primary-light-3: #6c8ed0;
@@ -495,7 +495,7 @@ function renderMarkdown(text: string): string {
 .section-kicker { display: block; color: var(--class-accent); font-size: 12px; font-weight: 700; letter-spacing: 2px; }
 .page-title { margin: 6px 0; font-size: 30px; line-height: 1.35; font-weight: 750; letter-spacing: -.7px; color: #263b5c; overflow-wrap: anywhere; }
 .header-caption { margin: 8px 0 0; color: #73847f; font-size: 14px; overflow-wrap: anywhere; }
-.cr-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 10px 0 28px; }
+.cr-header { display: flex; align-items: center; justify-content: space-between; flex-wrap:wrap; gap:20px; padding:26px; margin-bottom:24px; border-radius:18px; background:linear-gradient(110deg,#ebe3fb,#f6f1ff 65%,#ffeede); border:1px solid #ded3f1; }
 .cr :deep(.el-button) { border-radius: 8px; box-shadow: none; font-weight: 600; }
 .cr :deep(.el-button--small) { min-height: 34px; padding: 8px 13px; }
 .cr :deep(.el-button--primary:not(.is-text):not(.is-plain)) { background: var(--class-accent); border-color: var(--class-accent); }

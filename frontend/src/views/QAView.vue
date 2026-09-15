@@ -604,4 +604,9 @@ onMounted(async () => {
 }
 .clear-btn:hover { background: #fef2f2; border-color: #ef4444; }
 .qa-view{max-width:1180px}.qa-header{padding:4px 2px 20px}.qa-layout{grid-template-columns:minmax(0,1fr) 300px;gap:20px}.qa-main{border:1px solid #dce8e1;border-radius:18px;background:linear-gradient(180deg,#fff,#fbfffc);box-shadow:0 5px 18px rgba(15,23,42,.05)}.qa-welcome{background:radial-gradient(circle at 50% 15%,#eff6ff,transparent 38%);border-radius:18px}.suggestion-chip{border-color:#bfdbfe;background:#eff6ff;color:#2563eb}.suggestion-chip:nth-child(2n){border-color:#bbf7d0;background:#ecfdf3;color:#15803d}.suggestion-chip:nth-child(3n){border-color:#fed7aa;background:#fff7ed;color:#c2410c}.qa-sidebar .sidebar-section{box-shadow:0 3px 12px rgba(15,23,42,.04);border-color:#e4e8e2}.section-course{background:#eff6ff;border-color:#bfdbfe!important}.section-questions{background:#fff7ed;border-color:#fed7aa!important}.section-actions{background:#ecfdf3;border-color:#bbf7d0!important}.section-sessions{background:#f5f3ff;border-color:#ddd6fe!important}.qa-input-area{background:#fbfcfa;border-top-color:#dce8e1}.qa-input:focus{border-color:#86efac;background:#fff}.qa-send-btn{background:linear-gradient(135deg,#22c55e,#15803d);box-shadow:0 5px 12px rgba(34,197,94,.2)}
+.qa-header { padding:24px; margin-bottom:20px; border-radius:18px; background:linear-gradient(110deg,#ffe8cb,#fff7eb 65%,#e9f2ff); border:1px solid #f4d9b8; }
+.qa-send-btn { background:#bd601e; box-shadow:0 4px 12px #bd601e24; }
+.qa-send-btn:hover:not(:disabled) { background:#a64b12; }
+.qa-input:focus { border-color:#dc9c61; }
+.section-actions { background:#e9f3ff; border-color:#d1e3fa!important; }
 </style>
