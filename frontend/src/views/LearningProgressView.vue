@@ -156,6 +156,67 @@
           >生成学习方法</el-button>
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="AI 对话评判" name="evaluate">
+        <div class="eval-wrap">
+          <!-- 选择知识点 -->
+          <div class="eval-select-bar">
+            <el-select
+              v-model="evalKpId"
+              placeholder="选择要评判的知识点"
+              filterable
+              style="width: 320px"
+            >
+              <el-option
+                v-for="r in records"
+                :key="r.knowledge_point_id"
+                :label="r.knowledge_point_name"
+                :value="r.knowledge_point_id"
+              >
+                <span>{{ r.knowledge_point_name }}</span>
+                <span style="float: right; color: #94a3b8; font-size: 12px">{{ statusLabel(r.status) }}</span>
+              </el-option>
+            </el-select>
+            <el-button type="primary" :loading="evalLoading" @click="startEvaluate">
+              开始评判
+            </el-button>
+          </div>
+
+          <!-- 对话区 -->
+          <div v-if="evalMessages.length" class="eval-chat">
+            <div v-for="(m, i) in evalMessages" :key="i" class="eval-msg" :class="m.role">
+              <div class="eval-bubble">{{ m.content }}</div>
+            </div>
+          </div>
+
+          <!-- 输入区 -->
+          <div v-if="evalActive" class="eval-input-bar">
+            <el-input
+              v-model="evalInput"
+              placeholder="输入你的回答..."
+              @keydown.enter="sendEval"
+            />
+            <el-button type="primary" :loading="evalSending" @click="sendEval">发送</el-button>
+          </div>
+
+          <!-- 评判结果 -->
+          <div v-if="evalResult" class="eval-result-card">
+            <el-alert type="success" :closable="false" show-icon>
+              <template #title>
+                掌握度：{{ evalResult.mastery }} 分（{{ statusLabel(evalResult.learning_status) }}）
+              </template>
+              <p v-if="evalResult.comment">{{ evalResult.comment }}</p>
+              <p v-if="evalResult.weak_points?.length">薄弱点：{{ evalResult.weak_points.join('、') }}</p>
+              <p v-if="evalResult.suggestions?.length">建议：{{ evalResult.suggestions.join('；') }}</p>
+            </el-alert>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-if="!evalMessages.length && !evalResult" class="inline-empty">
+            <p>选择知识点并点击「开始评判」，AI 将通过多轮对话评估你的掌握程度，并自动更新学习进度</p>
+          </div>
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -187,6 +248,22 @@ const recommendLoading = ref(false)
 const methodsLoading = ref(false)
 const methodsData = ref<{ summary: string; methods: Array<{ title: string; description: string; reason: string }> } | null>(null)
 
+// ── AI 对话评判 ──
+const evalKpId = ref<number | undefined>()
+const evalId = ref('')
+const evalMessages = ref<Array<{ role: 'assistant' | 'user'; content: string }>>([])
+const evalInput = ref('')
+const evalActive = ref(false)
+const evalSending = ref(false)
+const evalLoading = ref(false)
+const evalResult = ref<{
+  mastery: number
+  learning_status: string
+  comment: string
+  weak_points?: string[]
+  suggestions?: string[]
+} | null>(null)
+
 const statItems = computed(() => {
   if (!stats.value) return []
   return [
@@ -211,7 +288,7 @@ function statusTagType(status: KnowledgeStatus): 'info' | 'warning' | 'success' 
   }
 }
 
-function statusLabel(status: KnowledgeStatus): string {
+function statusLabel(status: string): string {
   switch (status) {
     case 'not_started': return '未开始'
     case 'in_progress': return '学习中'
@@ -281,6 +358,51 @@ async function fetchStudyMethods() {
     // 错误已处理
   } finally {
     methodsLoading.value = false
+  }
+}
+
+async function startEvaluate() {
+  if (!evalKpId.value) {
+    ElMessage.warning('请先选择要评判的知识点')
+    return
+  }
+  evalLoading.value = true
+  evalMessages.value = []
+  evalResult.value = null
+  evalActive.value = false
+  evalInput.value = ''
+  try {
+    const r = await learningAPI.evaluateStart(evalKpId.value)
+    evalId.value = r.eval_id
+    evalMessages.value.push({ role: 'assistant', content: r.question })
+    evalActive.value = true
+  } catch (e: any) {
+    ElMessage.error('启动评判失败: ' + (e?.response?.data?.detail || ''))
+  } finally {
+    evalLoading.value = false
+  }
+}
+
+async function sendEval() {
+  const ans = evalInput.value.trim()
+  if (!ans || evalSending.value) return
+  evalMessages.value.push({ role: 'user', content: ans })
+  evalInput.value = ''
+  evalSending.value = true
+  try {
+    const r = await learningAPI.evaluateReply(evalId.value, ans)
+    if (r.status === 'continue') {
+      if (r.comment) evalMessages.value.push({ role: 'assistant', content: r.comment })
+      if (r.question) evalMessages.value.push({ role: 'assistant', content: r.question })
+    } else {
+      evalActive.value = false
+      evalResult.value = r as any
+      await fetchProgress()
+    }
+  } catch (e: any) {
+    ElMessage.error('评判失败: ' + (e?.response?.data?.detail || ''))
+  } finally {
+    evalSending.value = false
   }
 }
 
@@ -614,5 +736,23 @@ html.dark .method-rank {
 .method-refresh {
   text-align: center;
 }
+
+.eval-wrap { display: flex; flex-direction: column; gap: var(--space-4); }
+.eval-select-bar { display: flex; align-items: center; gap: var(--space-3); }
+.eval-chat {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  max-height: 380px; overflow-y: auto;
+  padding: var(--space-3); background: #f8fafc; border-radius: var(--radius-md);
+}
+.eval-msg { display: flex; }
+.eval-msg.user { justify-content: flex-end; }
+.eval-bubble {
+  max-width: 80%; padding: 10px 14px; border-radius: 12px;
+  font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); white-space: pre-wrap;
+}
+.eval-msg.assistant .eval-bubble { background: #fff; border: 1px solid #e2e8f0; }
+.eval-msg.user .eval-bubble { background: var(--color-brand-600); color: #fff; }
+.eval-input-bar { display: flex; gap: var(--space-2); }
+.eval-result-card :deep(p) { margin: 4px 0; font-size: var(--font-size-sm); }
 .progress-view{max-width:1180px}.progress-header{padding:4px 2px 20px}.stats-row{gap:14px}.stat-card{border:1px solid #e4e8e2;border-radius:15px;background:#fff;box-shadow:0 3px 12px rgba(15,23,42,.04)}.stat-card:nth-child(1){background:#eff6ff;border-color:#bfdbfe}.stat-card:nth-child(2){background:#ecfdf3;border-color:#bbf7d0}.stat-card:nth-child(3){background:#fff7ed;border-color:#fed7aa}.stat-card:nth-child(4){background:#f5f3ff;border-color:#ddd6fe}.progress-bar-wrap,.kp-table-wrap,.recommend-wrap,.methods-wrap{border-color:#e4e8e2;background:#fff;box-shadow:0 3px 12px rgba(15,23,42,.035)}.recommend-item{background:#f5f9ff;border-color:#dbeafe}.method-item{background:#f5fcf7;border-color:#dcfce7}.progress-tabs{background:#fff;border:1px solid #e4e8e2;border-radius:15px;padding:8px 14px;box-shadow:0 3px 12px rgba(15,23,42,.035)}
 </style>
