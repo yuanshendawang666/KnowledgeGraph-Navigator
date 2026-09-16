@@ -129,7 +129,10 @@ export const classroomAPI = {
   tasks(id: number) {
     return http.get(`/classrooms/${id}/tasks`) as Promise<ClassroomTask[]>
   },
-  createTask(id: number, data: { title: string; description?: string; course_id?: number | null; due_date?: string | null }) {
+  startTask(id: number, taskId: number) {
+    return http.post(`/classrooms/${id}/tasks/${taskId}/start`, {}) as Promise<{ session_id: number }>
+  },
+  createTask(id: number, data: { title: string; description?: string; course_id?: number | null; due_date?: string | null; question_ids?: number[] }) {
     return http.post(`/classrooms/${id}/tasks`, data) as Promise<ClassroomTask>
   },
   submitTask(id: number, taskId: number, note = '') {

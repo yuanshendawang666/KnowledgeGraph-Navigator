@@ -81,7 +81,7 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        logger.info(f"[AUTH] Token received: {token[:30]}... (len={len(token)})")
+
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
@@ -91,7 +91,7 @@ async def get_current_user(
         if user_id is None:
             logger.warning("[AUTH] user_id is None in token payload")
             raise credentials_exception
-    except JWTError as e:
+    except (JWTError, ValueError, TypeError) as e:
         logger.error(f"[AUTH] JWT decode failed: {type(e).__name__}: {e}")
         raise credentials_exception
 
@@ -174,6 +174,8 @@ class TokenResponse(BaseModel):
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(data: UserRegister, db: Session = Depends(get_db)):
     """用户注册"""
+    if data.role != UserRole.STUDENT:
+        raise HTTPException(403, "教师账号由管理员开通，公开注册仅支持学生")
     # 检查用户名是否已存在
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(

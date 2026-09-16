@@ -1,25 +1,4 @@
 import http from './index'
-import axios from 'axios'
-
-// 知识提取耗时较长（~100秒），单独建一个直连后端+长超时的实例
-const directHttp = axios.create({
-  timeout: 300000,
-  headers: { 'Content-Type': 'application/json' },
-})
-directHttp.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-directHttp.interceptors.response.use(
-  (res) => res.data,
-  (err) => {
-    if (!err.response) throw new Error('NETWORK_ERROR')
-    throw err
-  }
-)
 
 export interface CourseItem {
   id: number
@@ -100,9 +79,21 @@ export const coursesAPI = {
     }) as Promise<{ message: string; filename: string; document_id: number }>
   },
 
-  extractKnowledge(courseId: number) {
-    // 直连后端，不走 Vite 代理，避免代理超时
-    return directHttp.post(`http://localhost:8000/api/courses/${courseId}/extract`) as Promise<ExtractResult>
+  async extractKnowledge(courseId: number): Promise<ExtractResult> {
+    const job = await http.post(`/courses/${courseId}/extract`, {}) as unknown as { job_id: string }
+    // 每次请求是短请求；超时后后台任务仍保留，再次点击会复用正在运行的任务。
+    for (let i = 0; i < 600; i++) {
+      const state = await http.get(`/courses/${courseId}/extract/${job.job_id}`) as unknown as {
+        status: string; result: ExtractResult; error: string; graph_sync: string
+      }
+      if (state.status === 'completed') {
+        if (state.graph_sync !== 'synced') throw new Error('知识已保存，图数据库待同步，请点击重试图同步')
+        return state.result
+      }
+      if (state.status === 'failed') throw new Error(state.error)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+    throw new Error('任务仍在后台处理，请稍后重新查看')
   },
 
   getGraph(courseId: number, depth = 2) {

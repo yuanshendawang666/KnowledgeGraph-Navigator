@@ -19,3 +19,4 @@ aiofiles>=24.0.0
 rapidocr_onnxruntime>=1.4.0
 pymupdf>=1.24.0
 fpdf2>=2.7.0
+requests>=2.32.0

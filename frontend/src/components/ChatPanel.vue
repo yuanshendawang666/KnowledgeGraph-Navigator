@@ -25,10 +25,10 @@
           :class="msg.role"
         >
           <div class="message-bubble">
-            <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
+            <div class="message-text" v-html="safeHTML(renderMarkdown(msg.content))"></div>
             <div v-if="msg.references?.length" class="message-refs">
               <span class="ref-label">参考：</span>
-              <span v-for="r in msg.references" :key="r.knowledge_point_id" class="ref-tag">
+              <span v-for="r in msg.references" :key="r.name" class="ref-tag">
                 {{ r.name }}
               </span>
             </div>
@@ -75,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeHTML } from "@/utils/safeHtml"
 import { ref, watch, nextTick } from 'vue'
 import { ChatDotRound, Close, Promotion } from '@element-plus/icons-vue'
 import { qaAPI, type QAAnswer } from '@/api/qa'
@@ -87,7 +88,7 @@ const props = defineProps<{
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  references?: QAAnswer['references']
+  references?: QAAnswer['sources']
 }
 
 const isOpen = ref(false)
@@ -147,7 +148,7 @@ async function send(text?: string) {
     messages.value.push({
       role: 'assistant',
       content: res.answer,
-      references: res.references,
+      references: res.sources ?? res.references,
     })
     if (res.suggested_questions?.length) {
       suggested.value = res.suggested_questions

@@ -168,9 +168,12 @@ function goHome() {
   router.push('/')
 }
 
-function saveProfile() {
-  ElMessage.success('资料已更新（演示）')
-  showEditDialog.value = false
+async function saveProfile() {
+  try {
+    await auth.updateProfile({ username: editForm.username.trim(), email: editForm.email.trim() })
+    ElMessage.success('资料已保存')
+    showEditDialog.value = false
+  } catch { /* API 层统一显示错误 */ }
 }
 </script>
 

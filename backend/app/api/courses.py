@@ -17,6 +17,8 @@
 
 import os
 import shutil
+import uuid
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import (
@@ -29,17 +31,163 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import (
     User, Course, KnowledgePoint, KnowledgeRelation, Document,
-    DocumentStatus, UserRole, RelationType,
+    DocumentStatus, UserRole, RelationType, ExtractionJob, GraphSyncState,
 )
 from app.api.auth import get_current_user
 from app.services.parser import DocumentParser
 from app.services.extractor import KnowledgeExtractor
 from app.services.graph_ops import GraphOperations
+from app.services.graph_sync import mark_pending, sync_course
 
 settings = get_settings()
 router = APIRouter(prefix="/api/courses", tags=["课程与图谱管理"])
 
 graph_ops = GraphOperations()
+
+
+def require_owner(course_id, db, user):
+    course = _get_course_or_404(course_id, db)
+    if user.role != UserRole.TEACHER or course.teacher_id != user.id:
+        raise HTTPException(403, "仅课程教师可操作")
+    return course
+
+
+@router.post('/{course_id}/extract', status_code=202)
+def enqueue_extraction(course_id: int, db: Session = Depends(get_db),
+                       current_user: User = Depends(get_current_user)):
+    from sqlalchemy import text
+    require_owner(course_id, db, current_user)
+    db.commit()
+    db.execute(text('BEGIN IMMEDIATE'))
+    job = db.query(ExtractionJob).filter(ExtractionJob.course_id == course_id,
+        ExtractionJob.status.in_(['queued', 'running'])).first()
+    if not job:
+        job = ExtractionJob(id=uuid.uuid4().hex, course_id=course_id, user_id=current_user.id)
+        db.add(job)
+    db.commit()
+    return {'job_id': job.id, 'status': job.status}
+
+
+@router.get('/{course_id}/extract/{job_id}')
+def extraction_status(course_id: int, job_id: str, db: Session = Depends(get_db),
+                      current_user: User = Depends(get_current_user)):
+    import json
+    require_owner(course_id, db, current_user)
+    job = db.query(ExtractionJob).filter_by(id=job_id, course_id=course_id).first()
+    if not job:
+        raise HTTPException(404, '任务不存在')
+    state = db.get(GraphSyncState, course_id)
+    return {'job_id': job.id, 'status': job.status, 'error': job.error,
+            'result': json.loads(job.result or '{}'),
+            'graph_sync': state.status if state else 'pending'}
+
+
+@router.post('/{course_id}/graph/sync')
+def retry_graph_sync(course_id: int, db: Session = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    require_owner(course_id, db, current_user)
+    mark_pending(db, course_id)
+    db.commit()
+    status = sync_course(db, course_id)
+    return {'status': status}
+
+
+class RelationInput(BaseModel):
+    source_kp_id: int
+    target_kp_id: int
+    relation_type: RelationType
+
+
+def validate_relation(data, course_id, db, exclude_id=None):
+    source, target = db.get(KnowledgePoint, data.source_kp_id), db.get(KnowledgePoint, data.target_kp_id)
+    if not source or not target or source.course_id != course_id or target.course_id != course_id:
+        raise HTTPException(400, '关系两端必须属于当前课程')
+    if source.id == target.id:
+        raise HTTPException(400, '不能连接到自身')
+    rows = db.query(KnowledgeRelation).filter_by(course_id=course_id).all()
+    for row in rows:
+        if row.id != exclude_id and (row.source_kp_id, row.target_kp_id, row.relation_type) == (
+                source.id, target.id, data.relation_type):
+            raise HTTPException(409, '关系已存在')
+    if data.relation_type in (RelationType.PART_OF, RelationType.PREREQUISITE):
+        adjacency = {}
+        for r in rows:
+            if r.id != exclude_id and r.relation_type == data.relation_type:
+                adjacency.setdefault(r.source_kp_id, []).append(r.target_kp_id)
+        if data.relation_type == RelationType.PART_OF:
+            for p in db.query(KnowledgePoint).filter_by(course_id=course_id).all():
+                if p.parent_id and p.id != source.id:
+                    adjacency.setdefault(p.id, []).append(p.parent_id)
+        pending, seen = [target.id], set()
+        while pending:
+            node = pending.pop()
+            if node == source.id:
+                raise HTTPException(400, '该关系会形成循环')
+            if node not in seen:
+                seen.add(node)
+                pending.extend(adjacency.get(node, []))
+    return source, target
+
+
+@router.get('/{course_id}/relations')
+def list_relations(course_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    require_owner(course_id, db, current_user)
+    return [dict(id=r.id, source_kp_id=r.source_kp_id, target_kp_id=r.target_kp_id,
+                 relation_type=r.relation_type.value)
+            for r in db.query(KnowledgeRelation).filter_by(course_id=course_id).all()]
+
+
+def save_relation(course_id, data, db, relation=None):
+    source, target = validate_relation(data, course_id, db, relation.id if relation else None)
+    if relation and relation.relation_type == RelationType.PART_OF:
+        old = db.get(KnowledgePoint, relation.source_kp_id)
+        if old and old.parent_id == relation.target_kp_id:
+            old.parent_id = None
+    if data.relation_type == RelationType.PART_OF:
+        # 同一子节点只能有一个父节点。
+        db.query(KnowledgeRelation).filter(KnowledgeRelation.course_id == course_id,
+            KnowledgeRelation.source_kp_id == source.id, KnowledgeRelation.relation_type == RelationType.PART_OF,
+            KnowledgeRelation.id != (relation.id if relation else -1)).delete(synchronize_session=False)
+        source.parent_id = target.id
+    if relation is None:
+        relation = KnowledgeRelation(course_id=course_id)
+        db.add(relation)
+    for key, value in data.model_dump().items():
+        setattr(relation, key, value)
+    mark_pending(db, course_id)
+    db.commit()
+    return {'id': relation.id, 'graph_sync': sync_course(db, course_id)}
+
+
+@router.post('/{course_id}/relations')
+def create_relation(course_id: int, data: RelationInput, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    require_owner(course_id, db, current_user)
+    return save_relation(course_id, data, db)
+
+
+@router.put('/{course_id}/relations/{relation_id}')
+def update_relation(course_id: int, relation_id: int, data: RelationInput, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    require_owner(course_id, db, current_user)
+    row = db.query(KnowledgeRelation).filter_by(id=relation_id, course_id=course_id).first()
+    if not row:
+        raise HTTPException(404, '关系不存在')
+    return save_relation(course_id, data, db, row)
+
+
+@router.delete('/{course_id}/relations/{relation_id}')
+def delete_relation(course_id: int, relation_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    require_owner(course_id, db, current_user)
+    row = db.query(KnowledgeRelation).filter_by(id=relation_id, course_id=course_id).first()
+    if not row:
+        raise HTTPException(404, '关系不存在')
+    if row.relation_type == RelationType.PART_OF:
+        kp = db.get(KnowledgePoint, row.source_kp_id)
+        if kp.parent_id == row.target_kp_id:
+            kp.parent_id = None
+    db.delete(row)
+    mark_pending(db, course_id)
+    db.commit()
+    return {'graph_sync': sync_course(db, course_id)}
 
 
 # ---- 请求/响应模型 ----
@@ -289,15 +437,18 @@ async def upload_document(
     if current_user.id != course.teacher_id:
         raise HTTPException(status_code=403, detail="仅课程创建者可上传文档")
 
+    filename = Path((file.filename or "").replace("\\", "/")).name
+    if not filename or any(ord(c) < 32 for c in filename):
+        raise HTTPException(400, "无效文件名")
     # 验证文件类型
-    if not DocumentParser.is_supported(file.filename):
+    if not DocumentParser.is_supported(filename):
         raise HTTPException(
             status_code=400,
             detail=f"不支持的文件格式，仅支持: {', '.join(DocumentParser.SUPPORTED_EXTENSIONS)}",
         )
 
     # 检查文件大小
-    content = await file.read()
+    content = await file.read(settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024 + 1)
     max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     if len(content) > max_size:
         raise HTTPException(
@@ -309,7 +460,7 @@ async def upload_document(
     upload_dir = os.path.join(settings.UPLOAD_DIR, str(course_id))
     os.makedirs(upload_dir, exist_ok=True)
 
-    file_path = os.path.join(upload_dir, file.filename)
+    file_path = str(Path(upload_dir).resolve() / (uuid.uuid4().hex + Path(filename).suffix.lower()))
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -325,7 +476,7 @@ async def upload_document(
     # 创建文档记录
     document = Document(
         course_id=course_id,
-        filename=file.filename,
+        filename=filename,
         file_path=file_path,
         parsed_content=parsed_text,
         status=doc_status,
@@ -344,7 +495,7 @@ async def upload_document(
     }
 
 
-@router.post("/{course_id}/extract", response_model=ExtractResult)
+
 async def extract_knowledge(
     course_id: int,
     db: Session = Depends(get_db),
@@ -366,7 +517,7 @@ async def extract_knowledge(
         db.query(Document)
         .filter(
             Document.course_id == course_id,
-            Document.status.in_([DocumentStatus.PARSED, DocumentStatus.UPLOADED]),
+            Document.status.in_([DocumentStatus.PARSED, DocumentStatus.UPLOADED, DocumentStatus.EXTRACTED]),
         )
         .all()
     )
@@ -388,6 +539,8 @@ async def extract_knowledge(
             detail="文档内容为空，无法提取知识",
         )
 
+    # 结束只读事务，抽取期间不占用数据库写锁。
+    db.commit()
     # 调用 DeepSeek API 提取知识
     extractor = KnowledgeExtractor()
     try:
@@ -408,76 +561,46 @@ async def extract_knowledge(
             knowledge_points=[], relations=[],
         )
 
-    # ---- 清除旧数据 ----
-    graph_ops.clear_course_graph(course_id)
-    db.query(KnowledgeRelation).filter(
-        KnowledgeRelation.course_id == course_id
-    ).delete()
-    db.query(KnowledgePoint).filter(
-        KnowledgePoint.course_id == course_id
-    ).delete()
-    db.commit()
-
-    # ---- 写入 Neo4j ----
-    neo4j_ids = []
-    if modules:
-        # 用树状结构写入
-        tree_result = graph_ops.bulk_create_tree(course_id, modules)
-        print(f"[Extract] 树状结构写入: {tree_result['node_count']} 个节点")
-        neo4j_ids = tree_result.get("nodes", [])
-    else:
-        # 兼容旧的扁平格式
-        flat_result = graph_ops.bulk_create_knowledge_points(kps, course_id)
-        for n in (flat_result or []):
-            neo4j_ids.append(n["neo4j_id"] if n else None)
-
-    # 跨模块/子模块的关系（PREREQUISITE / RELATED_TO）
-    if relations:
-        graph_ops.bulk_create_relations(relations, course_id)
-
-    # ---- 写入 SQLite（用 Neo4j 实际 id，保证两库关联一致） ----
+    # 保留旧知识点 ID 及学习数据。相同名称更新，未匹配旧点留给教师审核。
+    existing = {p.name: p for p in db.query(KnowledgePoint).filter_by(course_id=course_id).all()}
     sqlite_kps = {}
-    for i, kp_data in enumerate(kps):
-        neo4j_id = neo4j_ids[i] if i < len(neo4j_ids) and neo4j_ids[i] else f"kp_{course_id}_{i}"
-        kp = KnowledgePoint(
-            neo4j_node_id=neo4j_id,
-            course_id=course_id,
-            name=kp_data["name"],
-            description=kp_data.get("description", ""),
-            order_index=kp_data.get("order_index", i),
-            level=kp_data.get("level", 2),
-            is_module=kp_data.get("is_module", False),
-            parent_id=None,  # 稍后设置
-        )
-        db.add(kp)
+    for i, item in enumerate(kps):
+        name = item["name"].strip()
+        kp = existing.get(name)
+        if kp is None:
+            kp = KnowledgePoint(course_id=course_id, name=name, neo4j_node_id=uuid.uuid4().hex)
+            db.add(kp)
+        kp.description = item.get("description", "")
+        kp.order_index = item.get("order_index", i)
+        kp.level = item.get("level", 2)
+        kp.is_module = item.get("is_module", False)
         db.flush()
-        sqlite_kps[kp_data["name"]] = kp
-
-    # 设置父子关系
-    for kp_data in kps:
-        parent_name = kp_data.get("parent_name")
-        if parent_name and parent_name in sqlite_kps:
-            child = sqlite_kps[kp_data["name"]]
-            child.parent_id = sqlite_kps[parent_name].id
-
-    # 关系记录
-    for rel_data in relations:
-        source_kp = sqlite_kps.get(rel_data["source"])
-        target_kp = sqlite_kps.get(rel_data["target"])
-        if source_kp and target_kp:
-            relation = KnowledgeRelation(
-                course_id=course_id,
-                source_kp_id=source_kp.id,
-                target_kp_id=target_kp.id,
-                relation_type=RelationType(rel_data["relation_type"]),
-            )
-            db.add(relation)
-
+        sqlite_kps[name] = kp
+    for item in kps:
+        parent = sqlite_kps.get(item.get("parent_name"))
+        child = sqlite_kps[item["name"].strip()]
+        if parent and parent.id == child.id:
+            raise HTTPException(400, "抽取结果存在自包含关系")
+        child.parent_id = parent.id if parent else None
+    # 合并关系，保留教师已修正的关系，避免重抽覆盖人工数据。
+    known = {(r.source_kp_id, r.target_kp_id, r.relation_type.value)
+             for r in db.query(KnowledgeRelation).filter_by(course_id=course_id).all()}
+    for item in relations:
+        source, target = sqlite_kps.get(item["source"]), sqlite_kps.get(item["target"])
+        kind = RelationType(item["relation_type"])
+        if source and target and source.id != target.id:
+            key = (source.id, target.id, kind.value)
+            if key not in known:
+                db.add(KnowledgeRelation(course_id=course_id, source_kp_id=source.id,
+                                        target_kp_id=target.id, relation_type=kind))
+                known.add(key)
+    mark_pending(db, course_id)
     # 更新文档状态
     for doc in documents:
         doc.status = DocumentStatus.EXTRACTED
     db.commit()
 
+    sync_course(db, course_id)
     return ExtractResult(
         knowledge_points_count=len(kps),
         relations_count=len(relations),

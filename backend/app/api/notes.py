@@ -7,12 +7,12 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.api.auth import get_current_user
 from app.core.database import get_db
-from app.models import Note, User
+from app.models import Note, User, Course, KnowledgePoint
 
 router = APIRouter(prefix="/api/notes", tags=["学习笔记"])
 
 class NoteCreate(BaseModel):
-    knowledge_point_id: int
+    knowledge_point_id: Optional[int] = None
     course_id: int
     title: str
     content: str = ""
@@ -23,13 +23,19 @@ class NoteUpdate(BaseModel):
     title: Optional[str] = None; content: Optional[str] = None; tags: Optional[str] = None; is_public: Optional[bool] = None
 
 class NoteOut(BaseModel):
-    id: int; user_id: int; username: str = ""; knowledge_point_id: int; course_id: int
+    id: int; user_id: int; username: str = ""; knowledge_point_id: Optional[int]; course_id: int
     title: str; content: str; tags: str; is_public: bool; created_at: str; updated_at: str
     class Config: from_attributes = True
 
 @router.post("/", response_model=NoteOut)
 def create_note(data: NoteCreate, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
-    n = Note(user_id=u.id, **data.dict())
+    if not db.get(Course, data.course_id):
+        raise HTTPException(404, "课程不存在")
+    if data.knowledge_point_id is not None:
+        kp = db.get(KnowledgePoint, data.knowledge_point_id)
+        if not kp or kp.course_id != data.course_id:
+            raise HTTPException(400, "知识点不属于所选课程")
+    n = Note(user_id=u.id, **data.model_dump())
     db.add(n); db.commit(); db.refresh(n)
     return _format(n, u)
 

@@ -37,7 +37,7 @@
           </el-button>
         </div>
         <div v-if="aiContent">
-          <div class="ai-block" v-html="renderMarkdown(aiContent.explanation)"></div>
+          <div class="ai-block" v-html="safeHTML(renderMarkdown(aiContent.explanation))"></div>
           <template v-if="aiContent.examples?.length">
             <h3>典型例题</h3>
             <ul><li v-for="(e, i) in aiContent.examples" :key="i">{{ e }}</li></ul>
@@ -122,13 +122,14 @@
           <el-input v-model="askQuestion" type="textarea" :rows="2" placeholder="针对该知识点提问..." />
           <el-button type="primary" :loading="askLoading" @click="sendAsk">提问</el-button>
         </div>
-        <div v-if="askAnswer" class="ask-answer" v-html="renderMarkdown(askAnswer)"></div>
+        <div v-if="askAnswer" class="ask-answer" v-html="safeHTML(renderMarkdown(askAnswer))"></div>
       </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { safeHTML } from "@/utils/safeHtml"
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, MagicStick, Document } from '@element-plus/icons-vue'

@@ -3,6 +3,12 @@
 
 基于大模型的知识图谱教学平台，支持文档解析、知识图谱构建、个性化学习路径推荐与智能问答。
 
+## 验收与测试
+
+- 图谱关系支持 `prerequisite`、`related_to`、`part_of`；课程教师可在课程详情的“修正关系”中手动新增、删除关系，先修与包含关系会校验环路。
+- 抽取验收集为 `backend/tests/fixtures/extraction_eval.json`，执行 `python tests/evaluate_extraction.py` 产出知识点精确率、召回率和 F1。RAG 验收集为 `backend/tests/fixtures/rag_eval.json`。启动服务并设置 `RAG_EVAL_TOKEN` 后执行 `python tests/evaluate_rag.py`，产出响应时间、引用命中率和幻觉线索报告。指标必须以报告实测为准。
+- 后端启动时执行可重复 SQLite 迁移。抽取任务在后台执行，SQLite 是权威数据源；Neo4j 写入失败会保留待同步标记，教师可重试，不会重抽即删除已有学习进度、笔记和题目。
+
 ## 技术栈
 
 | 层级 | 技术 |

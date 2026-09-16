@@ -160,7 +160,7 @@
           </div>
           <div v-if="stats && !stats.knowledge_points.length" class="text-tertiary">暂无知识点数据（请先关联课程）</div>
 
-          <div v-if="aiReport" class="ai-report" v-html="renderMarkdown(aiReport)"></div>
+          <div v-if="aiReport" class="ai-report" v-html="safeHTML(renderMarkdown(aiReport))"></div>
         </el-tab-pane>
 
         <!-- ── 讨论区 ── -->
@@ -219,6 +219,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeHTML } from "@/utils/safeHtml"
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, ArrowLeft } from '@element-plus/icons-vue'
@@ -397,8 +398,9 @@ async function removeMember(studentId: number) {
 
 async function createTask() {
   if (!currentCr.value || !taskForm.value.title) { ElMessage.warning('请输入作业标题'); return }
+  if (taskCourseId.value && !selectedQuestionIds.value.length) { ElMessage.warning('请至少选择一道题目'); return }
   try {
-    await classroomAPI.createTask(currentCr.value.id, { title: taskForm.value.title, description: taskForm.value.desc, course_id: taskCourseId.value })
+    await classroomAPI.createTask(currentCr.value.id, { title: taskForm.value.title, description: taskForm.value.desc, course_id: taskCourseId.value, question_ids: selectedQuestionIds.value })
     taskForm.value = { title: '', desc: '' }; taskCourseId.value = undefined; taskQuestions.value = []; selectedQuestionIds.value = []
     ElMessage.success('任务已布置'); loadTasks()
   } catch { /* ignore */ }
@@ -408,8 +410,12 @@ async function loadTaskQuestions() {
   selectedQuestionIds.value = []
   taskQuestions.value = taskCourseId.value ? await quizAPI.listQuestions(taskCourseId.value) : []
 }
-function startTask(t: ClassroomTask) {
-  if (t.course_id) router.push(`/course/${t.course_id}/practice`)
+async function startTask(t: ClassroomTask) {
+  if (!t.course_id || !currentCr.value) return
+  try {
+    const session = await classroomAPI.startTask(currentCr.value.id, t.id)
+    router.push(`/course/${t.course_id}/practice?session=${session.session_id}&classroom=${currentCr.value.id}&task=${t.id}`)
+  } catch { /* API 层已提示 */ }
 }
 
 async function viewSubmissions(t: ClassroomTask) {

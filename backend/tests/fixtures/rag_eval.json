@@ -1,0 +1,4 @@
+[
+  {"id":"python-decorator-01","course_id":1,"question":"装饰器的作用是什么？","must_cite":["装饰器"],"forbidden_claims":["装饰器会改变 Python 解释器"]},
+  {"id":"python-list-01","course_id":1,"question":"列表和元组有什么区别？","must_cite":["列表","元组"],"forbidden_claims":["两者都不可变"]}
+]

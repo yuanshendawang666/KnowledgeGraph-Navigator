@@ -321,6 +321,7 @@ import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { quizAPI, type QuizMode, type QuestionDifficulty, type QuizSession, type SubmitResult, type WrongBookItem, type SessionHistoryItem, type SessionReview } from '@/api/quiz'
 import { coursesAPI } from '@/api/courses'
+import { classroomAPI } from '@/api/classroom'
 
 const route = useRoute()
 const router = useRouter()
@@ -533,6 +534,11 @@ async function submitQuiz() {
   submitting.value = true
   try {
     result.value = await quizAPI.submit(session.value.session_id, answerList)
+    const classroomId = Number(route.query.classroom)
+    const taskId = Number(route.query.task)
+    if (classroomId && taskId) {
+      await classroomAPI.submitTask(classroomId, taskId, '已完成指定作业题目')
+    }
     phase.value = 'result'
     ElMessage.success('答卷已提交')
   } catch {
@@ -542,8 +548,19 @@ async function submitQuiz() {
   }
 }
 
-onMounted(() => {
-  loadKnowledgePoints()
+onMounted(async () => {
+  await loadKnowledgePoints()
+  const taskSession = Number(route.query.session)
+  if (taskSession) {
+    try {
+      session.value = await quizAPI.getSession(taskSession)
+      phase.value = 'quiz'
+      for (const q of session.value.questions) {
+        if (q.question_type === 'multiple_choice') multiAnswers[q.id] = []
+        else answers[q.id] = ''
+      }
+    } catch { ElMessage.error('作业练习已失效，请返回班级重新进入') }
+  }
 })
 </script>
 

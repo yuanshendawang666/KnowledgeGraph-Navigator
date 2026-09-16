@@ -4,7 +4,7 @@ export interface Note {
   id: number
   user_id: number
   username: string
-  knowledge_point_id: number
+  knowledge_point_id: number | null
   course_id: number
   title: string
   content: string
@@ -20,7 +20,7 @@ export const notesAPI = {
   },
 
   create(data: {
-    knowledge_point_id: number
+    knowledge_point_id: number | null
     course_id: number
     title: string
     content?: string

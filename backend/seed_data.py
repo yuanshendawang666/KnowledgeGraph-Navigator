@@ -276,9 +276,9 @@ questions = [
 for cid, q in questions:
     r = api("POST", "/api/qa/ask", json={"course_id": cid, "question": q}, timeout=60)
     data = ok(r, f"Q: {q[:30]}...")
-    if data and data.get("code") == 0:
-        ans = data["data"]["answer"][:120].replace("\n", " ")
-        refs = [ref["name"] for ref in data["data"].get("references", [])]
+    if data and "answer" in data:
+        ans = data["answer"][:120].replace("\n", " ")
+        refs = [ref["name"] for ref in data.get("sources", [])]
         print(f"        A: {ans}...")
         if refs:
             print(f"        参考: {refs}")
@@ -286,8 +286,8 @@ for cid, q in questions:
 # 推荐问题
 r = api("GET", "/api/qa/recommend-questions?course_id=1", timeout=60)
 data = ok(r, "推荐问题")
-if data and data.get("code") == 0:
-    questions = data["data"].get("questions", [])
+if isinstance(data, list):
+    questions = data if isinstance(data, list) else []
     for q in questions:
         print(f"        - {q}")
 

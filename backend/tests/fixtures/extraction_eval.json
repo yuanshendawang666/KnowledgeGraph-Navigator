@@ -1,0 +1,8 @@
+[
+  {
+    "id": "python-basic-01",
+    "text": "Python 的变量用于保存数据。整数、浮点数和字符串是常见数据类型。列表用于保存多个有序元素。",
+    "expected_points": ["变量", "整数", "浮点数", "字符串", "列表"],
+    "expected_relations": []
+  }
+]

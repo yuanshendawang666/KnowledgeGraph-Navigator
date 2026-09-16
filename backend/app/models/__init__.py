@@ -392,7 +392,7 @@ class Note(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     knowledge_point_id = Column(Integer, ForeignKey("knowledge_points.id"),
-                                nullable=False, comment="关联知识点")
+                                nullable=True, comment="可选关联知识点，空值表示课程笔记")
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     title = Column(String(200), nullable=False)
     content = Column(Text, default="")
@@ -404,7 +404,6 @@ class Note(Base):
 
     user = relationship("User", back_populates="notes")
     course = relationship("Course")
-    knowledge_point = relationship("KnowledgePoint")
     knowledge_point = relationship("KnowledgePoint")
 
 
@@ -464,6 +463,8 @@ class ClassroomCourse(Base):
 class ClassroomTask(Base):
     """班级学习任务"""
     __tablename__ = "classroom_tasks"
+
+    question_ids = Column(Text, default="[]", nullable=False)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=False)
@@ -538,3 +539,23 @@ class ClassroomComment(Base):
 
     post = relationship("ClassroomPost", back_populates="comments")
     author = relationship("User")
+
+class GraphSyncState(Base):
+    """SQLite 是权威数据源；pending/failed 可重试同步到 Neo4j。"""
+    __tablename__ = "graph_sync_states"
+    course_id = Column(Integer, primary_key=True)
+    status = Column(String(20), default="pending", nullable=False)
+    error = Column(Text, default="")
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ExtractionJob(Base):
+    __tablename__ = "extraction_jobs"
+    id = Column(String(40), primary_key=True)
+    course_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False)
+    status = Column(String(20), default="queued", nullable=False)
+    result = Column(Text, default="{}")
+    error = Column(Text, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

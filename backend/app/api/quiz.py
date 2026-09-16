@@ -677,6 +677,9 @@ def review_session(
     if not session:
         raise HTTPException(status_code=404, detail="练习会话不存在")
 
+    if session.status != QuizSessionStatus.COMPLETED:
+        raise HTTPException(403, "提交练习后才能查看答案")
+
     sqs = (
         db.query(QuizSessionQuestion)
         .filter(QuizSessionQuestion.session_id == session_id)
@@ -730,6 +733,13 @@ def review_session(
 # 功能8：教师题库管理
 # ============================================================
 
+def _course_owner(course_id: int, db: Session, user: User):
+    _teacher_only(user)
+    course = _get_course_or_404(course_id, db)
+    if course.teacher_id != user.id:
+        raise HTTPException(403, "仅课程教师可管理题库")
+
+
 def _teacher_only(user: User):
     if user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="仅教师可执行此操作")
@@ -763,7 +773,7 @@ async def generate_questions_batch(
     current_user: User = Depends(get_current_user),
 ):
     """教师：AI 批量生成题目（指定知识点 + 数量 + 难度）。"""
-    _teacher_only(current_user)
+    _course_owner(req.course_id, db, current_user)
     kp = db.query(KnowledgePoint).filter(
         KnowledgePoint.id == req.knowledge_point_id,
         KnowledgePoint.course_id == req.course_id,
@@ -794,6 +804,7 @@ def list_questions(
     current_user: User = Depends(get_current_user),
 ):
     """题库查询（按课程 + 可选知识点/难度筛选）。"""
+    _course_owner(course_id, db, current_user)
     q = db.query(Question).filter(Question.course_id == course_id)
     if kp_id is not None:
         q = q.filter(Question.knowledge_point_id == kp_id)
@@ -837,6 +848,7 @@ def update_question(
     q = db.query(Question).filter(Question.id == question_id).first()
     if not q:
         raise HTTPException(status_code=404, detail="题目不存在")
+    _course_owner(q.course_id, db, current_user)
 
     if data.content is not None:
         q.content = data.content
@@ -868,6 +880,7 @@ def delete_question(
     q = db.query(Question).filter(Question.id == question_id).first()
     if not q:
         raise HTTPException(status_code=404, detail="题目不存在")
+    _course_owner(q.course_id, db, current_user)
 
     db.query(UserAnswer).filter(UserAnswer.question_id == question_id).delete()
     db.query(QuizSessionQuestion).filter(
@@ -886,6 +899,7 @@ def question_stats(
 ):
     """题目使用统计：被练习次数 / 正确率。"""
     _teacher_only(current_user)
+    _course_owner(course_id, db, current_user)
     questions = db.query(Question).filter(Question.course_id == course_id).all()
 
     # 统计每题的作答情况
@@ -918,6 +932,8 @@ def review_questions(
     _teacher_only(current_user)
     target_active = req.action == "approve"
     questions = db.query(Question).filter(Question.id.in_(req.question_ids)).all()
+    for q in questions:
+        _course_owner(q.course_id, db, current_user)
     for q in questions:
         q.is_active = target_active
         q.source = QuestionSource.TEACHER_EDITED

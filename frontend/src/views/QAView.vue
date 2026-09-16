@@ -35,7 +35,7 @@
               <img v-else src="/logo.png" alt="AI" class="avatar-icon-img" />
             </div>
             <div class="msg-body">
-              <div class="msg-content" :class="msg.role" v-html="renderMarkdown(msg.content)"></div>
+              <div class="msg-content" :class="msg.role" v-html="safeHTML(renderMarkdown(msg.content))"></div>
               <div v-if="msg.references?.length" class="msg-references">
                 <span class="ref-title">参考：</span>
                 <span v-for="(r, ridx) in msg.references" :key="r.name" class="ref-badge" :style="refBadgeStyle(ridx)">
@@ -169,6 +169,7 @@
 </template>
 
 <script setup lang="ts">
+import { safeHTML } from "@/utils/safeHtml"
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { Promotion, Delete, EditPen, ArrowDown, Plus, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'

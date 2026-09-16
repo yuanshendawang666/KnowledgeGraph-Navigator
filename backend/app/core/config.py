@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # ---- 文件上传配置 ----
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # ---- RAG 配置 ----
     CHUNK_SIZE: int = 500

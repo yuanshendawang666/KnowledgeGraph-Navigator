@@ -57,7 +57,7 @@
         <el-form-item label="身份" prop="role">
           <el-radio-group v-model="form.role" class="role-group">
             <el-radio-button value="student">学生</el-radio-button>
-            <el-radio-button value="teacher">教师</el-radio-button>
+            <span style="margin-left:12px;color:#64748b">教师账号请联系管理员开通</span>
           </el-radio-group>
         </el-form-item>
 

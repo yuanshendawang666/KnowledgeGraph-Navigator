@@ -36,7 +36,10 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
     # 轻量迁移：为已存在的 users 表补充画像列（SQLite create_all 不会为已有表加列）
-    _migrate_user_columns()
+    from app.core.migrations import migrate
+    migrate(engine)
+    from app.services.extraction_jobs import start_worker, stop_worker
+    start_worker()
 
     # 确保上传目录存在
     import os
@@ -45,32 +48,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # ---- 关闭时 ----
+    stop_worker()
     neo4j_driver.close()
 
 
-def _migrate_user_columns():
-    """为 users 表补齐新增的画像列，兼容旧数据库。"""
-    from sqlalchemy import text, inspect
-    try:
-        inspector = inspect(engine)
-        if "users" not in inspector.get_table_names():
-            return
-        existing = {col["name"] for col in inspector.get_columns("users")}
-        additions = [
-            ("major", "VARCHAR(100) DEFAULT ''"),
-            ("grade", "VARCHAR(50) DEFAULT ''"),
-            ("learning_goal", "VARCHAR(200) DEFAULT ''"),
-            ("age_range", "VARCHAR(50) DEFAULT ''"),
-            ("interests", "TEXT DEFAULT '[]'"),
-            ("content_preferences", "TEXT DEFAULT '[]'"),
-            ("onboarding_completed", "BOOLEAN DEFAULT 0"),
-        ]
-        with engine.begin() as conn:
-            for name, ddl in additions:
-                if name not in existing:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
-    except Exception as e:
-        print(f"[migrate] 用户表迁移跳过: {e}")
 
 
 app = FastAPI(
@@ -83,7 +64,7 @@ app = FastAPI(
 # ---- CORS 中间件 ----
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,7 +84,8 @@ app.include_router(evaluate.router)
 
 # ---- 静态文件 (仪表盘等) ----
 import os
-static_dir = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
+os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir, html=True), name="static")
 
 

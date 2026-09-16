@@ -62,6 +62,7 @@
               <el-button :type="graphDepth===2?'primary':''" @click="setDepth(2)">全部</el-button>
             </el-button-group>
             <el-button v-if="hasGraph" text size="small" type="danger" @click="clearGraph" style="margin-left:8px">清除图谱</el-button>
+            <el-button v-if="auth.isTeacher && course?.teacher_id === auth.user?.id" text size="small" type="primary" @click="openRelationDialog">修正关系</el-button>
           </div>
         </div>
         <KnowledgeGraph :data="graphData" :loading="graphLoading" @node-click="onNodeClick" @node-contextmenu="onNodeContextMenu" />
@@ -236,6 +237,23 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="relationDialogVisible" title="手动修正图谱关系" width="720px" destroy-on-close>
+      <p class="relation-tip">修改会同步到图谱。先修与包含关系会自动阻止形成循环。</p>
+      <el-table :data="relations" size="small" max-height="260">
+        <el-table-column label="起点" min-width="150"><template #default="{ row }">{{ kpName(row.source_kp_id) }}</template></el-table-column>
+        <el-table-column label="关系" width="100"><template #default="{ row }">{{ relationLabel(row.relation_type) }}</template></el-table-column>
+        <el-table-column label="终点" min-width="150"><template #default="{ row }">{{ kpName(row.target_kp_id) }}</template></el-table-column>
+        <el-table-column width="92"><template #default="{ row }"><el-button text type="danger" @click="removeRelation(row.id)">删除</el-button></template></el-table-column>
+      </el-table>
+      <el-divider>新增关系</el-divider>
+      <div class="relation-form">
+        <el-select v-model="relationForm.source_kp_id" placeholder="选择起点"><el-option v-for="kp in knowledgePoints" :key="kp.id" :label="kp.name" :value="kp.id" /></el-select>
+        <el-select v-model="relationForm.relation_type"><el-option label="先修关系" value="prerequisite" /><el-option label="相关关系" value="related_to" /><el-option label="包含关系" value="part_of" /></el-select>
+        <el-select v-model="relationForm.target_kp_id" placeholder="选择终点"><el-option v-for="kp in knowledgePoints" :key="kp.id" :label="kp.name" :value="kp.id" /></el-select>
+        <el-button type="primary" @click="saveRelation">添加</el-button>
+      </div>
+    </el-dialog>
+
     <!-- AI 问答浮动面板 -->
     <ChatPanel :course-id="courseId" />
   </div>
@@ -270,6 +288,9 @@ const extracting = ref(false)
 const graphDepth = ref(2)  // 图谱深度: 0=仅模块, 1=模块+子模块, 2=全部
 const expandedModules = ref<Set<string>>(new Set())  // 展开的模块ID
 const showAllKps = ref(false)  // 是否展开全部知识点
+const relationDialogVisible = ref(false)
+const relations = ref<Array<{id:number;source_kp_id:number;target_kp_id:number;relation_type:string}>>([])
+const relationForm = ref({ source_kp_id: undefined as number | undefined, target_kp_id: undefined as number | undefined, relation_type: 'prerequisite' })
 
 const hasDocuments = computed(() => (course.value?.document_count || 0) > 0)
 const hasGraph = computed(() => (graphData.value?.nodes?.length || 0) > 0)
@@ -345,6 +366,23 @@ async function fetchGraph() {
 function setDepth(d: number) {
   graphDepth.value = d
   fetchGraph()
+}
+
+function kpName(id: number) { return knowledgePoints.value.find(k => k.id === id)?.name || `知识点 #${id}` }
+function relationLabel(value: string) { return ({ prerequisite: '先修', related_to: '相关', part_of: '包含' } as Record<string,string>)[value] || value }
+async function openRelationDialog() {
+  try {
+    relations.value = await http.get(`/courses/${courseId.value}/relations`) as any
+    relationForm.value = { source_kp_id: undefined, target_kp_id: undefined, relation_type: 'prerequisite' }
+    relationDialogVisible.value = true
+  } catch { /* API 层已提示 */ }
+}
+async function saveRelation() {
+  if (!relationForm.value.source_kp_id || !relationForm.value.target_kp_id) return ElMessage.warning('请选择关系两端')
+  try { await http.post(`/courses/${courseId.value}/relations`, relationForm.value); await openRelationDialog(); await fetchGraph(); ElMessage.success('关系已保存') } catch { /* API 层已提示 */ }
+}
+async function removeRelation(id: number) {
+  try { await ElMessageBox.confirm('确定删除该关系？', '确认删除'); await http.delete(`/courses/${courseId.value}/relations/${id}`); await openRelationDialog(); await fetchGraph(); ElMessage.success('关系已删除') } catch { /* cancelled */ }
 }
 
 function toggleModule(id: string) {
@@ -573,6 +611,9 @@ onMounted(fetchCourse)
   max-width: 1200px;
   margin: 0 auto;
 }
+.relation-tip { margin:0 0 14px; color:var(--color-text-secondary); font-size:13px; }
+.relation-form { display:grid; grid-template-columns:1fr 100px 1fr auto; gap:10px; align-items:center; }
+@media(max-width:700px) { .relation-form { grid-template-columns:1fr; } }
 
 .back-link {
   display: inline-flex;

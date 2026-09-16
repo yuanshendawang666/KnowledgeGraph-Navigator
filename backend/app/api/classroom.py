@@ -5,6 +5,7 @@
 学生凭邀请码加入班级、查看班级课程。
 """
 
+import json
 import random
 import string
 from typing import List, Optional
@@ -19,7 +20,7 @@ from app.core.database import get_db
 from app.models import (
     Classroom, ClassroomMember, ClassroomCourse, ClassroomTask,
     ClassroomTaskSubmission, ClassroomAnnouncement, ClassroomPost, ClassroomComment,
-    User, UserRole, UserKnowledgeProgress, KnowledgePoint, KnowledgeStatus,
+    Course, Question, QuizMode, QuestionDifficulty, User, UserRole, UserKnowledgeProgress, KnowledgePoint, KnowledgeStatus,
 )
 
 router = APIRouter(prefix="/api/classrooms", tags=["班级系统"])
@@ -52,6 +53,15 @@ class TaskCreate(BaseModel):
     title: str
     description: str = ""
     due_date: Optional[str] = None
+    question_ids: List[int] = []
+
+
+def _require_member(cr_id: int, db: Session, u: User):
+    c = _get_classroom_or_404(cr_id, db)
+    if c.teacher_id != u.id and not db.query(ClassroomMember).filter_by(
+        classroom_id=cr_id, student_id=u.id).first():
+        raise HTTPException(403, "仅班级教师或成员可访问")
+    return c
 
 
 def _gen_code():
@@ -133,6 +143,7 @@ def join(cr_id: int, invite_code: str, db: Session = Depends(get_db), u: User = 
 
 @router.get("/{cr_id}/members")
 def members(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     ms = db.query(ClassroomMember).filter(ClassroomMember.classroom_id == cr_id).all()
     result = []
     for m in ms:
@@ -165,6 +176,9 @@ def add_course(cr_id: int, data: CourseLink, db: Session = Depends(get_db), u: U
     _require_teacher(u)
     if c.teacher_id != u.id:
         raise HTTPException(403, "仅班级创建者可关联课程")
+    course = db.get(Course, data.course_id)
+    if not course or course.teacher_id != u.id:
+        raise HTTPException(403, "只能关联自己的课程")
     exists = db.query(ClassroomCourse).filter(
         ClassroomCourse.classroom_id == cr_id, ClassroomCourse.course_id == data.course_id).first()
     if not exists:
@@ -174,6 +188,7 @@ def add_course(cr_id: int, data: CourseLink, db: Session = Depends(get_db), u: U
 
 @router.get("/{cr_id}/courses")
 def list_courses(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     links = db.query(ClassroomCourse).filter(ClassroomCourse.classroom_id == cr_id).all()
     result = []
     for link in links:
@@ -205,6 +220,7 @@ def remove_course(cr_id: int, course_id: int, db: Session = Depends(get_db), u: 
 
 @router.get("/{cr_id}/stats")
 def classroom_stats(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     """班级整体学习统计：各知识点掌握率、平均进度。"""
     c = _get_classroom_or_404(cr_id, db)
     members = db.query(ClassroomMember).filter(ClassroomMember.classroom_id == cr_id).all()
@@ -270,6 +286,19 @@ def create_task(cr_id: int, data: TaskCreate, db: Session = Depends(get_db), u: 
     if c.teacher_id != u.id:
         raise HTTPException(403, "仅班级创建者可布置任务")
 
+    ids = list(dict.fromkeys(data.question_ids))
+    if data.course_id:
+        course = db.get(Course, data.course_id)
+        if not course or course.teacher_id != u.id or not db.query(ClassroomCourse).filter_by(
+            classroom_id=cr_id, course_id=data.course_id).first():
+            raise HTTPException(403, "只能布置本班关联且属于自己的课程")
+    if data.course_id and not ids:
+        raise HTTPException(400, "请至少选择一道要布置的题目")
+    if ids:
+        questions = db.query(Question).filter(Question.id.in_(ids),
+            Question.course_id == data.course_id, Question.is_active == True).all()
+        if len(questions) != len(ids):
+            raise HTTPException(400, "题目不存在、已停用或不属于所选课程")
     due = None
     if data.due_date:
         from datetime import datetime
@@ -279,9 +308,31 @@ def create_task(cr_id: int, data: TaskCreate, db: Session = Depends(get_db), u: 
             raise HTTPException(400, "截止日期格式错误")
 
     t = ClassroomTask(classroom_id=cr_id, course_id=data.course_id,
-                      title=data.title, description=data.description, due_date=due)
+                      title=data.title, description=data.description, due_date=due,
+                      question_ids=json.dumps(ids))
     db.add(t); db.commit(); db.refresh(t)
     return {"id": t.id, "title": t.title, "due_date": t.due_date.isoformat() if t.due_date else None}
+
+
+@router.post("/{cr_id}/tasks/{task_id}/start")
+def start_task_quiz(cr_id: int, task_id: int, db: Session = Depends(get_db),
+                    u: User = Depends(get_current_user)):
+    """固定使用教师选定题目，避免学生跳转到课程后改练其他题。"""
+    _require_member(cr_id, db, u)
+    task = db.query(ClassroomTask).filter_by(id=task_id, classroom_id=cr_id).first()
+    if not task or not task.course_id:
+        raise HTTPException(404, "作业不存在或未配置练习题")
+    ids = json.loads(task.question_ids or "[]")
+    questions = db.query(Question).filter(
+        Question.id.in_(ids), Question.course_id == task.course_id,
+        Question.is_active == True).all()  # noqa: E712
+    if len(questions) != len(ids):
+        raise HTTPException(409, "作业题目已被修改，请联系教师重新发布")
+    from app.api.quiz import _build_session
+    session = _build_session(db, u.id, task.course_id, QuizMode.KNOWLEDGE_POINT,
+                             QuestionDifficulty.BASIC, questions,
+                             list({q.knowledge_point_id for q in questions}))
+    return session.model_dump()
 
 
 class TaskSubmit(BaseModel):
@@ -290,6 +341,7 @@ class TaskSubmit(BaseModel):
 
 @router.get("/{cr_id}/tasks")
 def list_tasks(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     tasks = db.query(ClassroomTask).filter(ClassroomTask.classroom_id == cr_id) \
         .order_by(ClassroomTask.created_at.desc()).all()
 
@@ -301,6 +353,7 @@ def list_tasks(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_
         item = {
             "id": t.id, "title": t.title, "description": t.description,
             "course_id": t.course_id,
+            "question_ids": json.loads(t.question_ids or "[]"),
             "due_date": t.due_date.isoformat() if t.due_date else None,
             "created_at": t.created_at.isoformat() if t.created_at else "",
         }
@@ -422,6 +475,7 @@ def add_member(cr_id: int, data: MemberAdd, db: Session = Depends(get_db),
 @router.get("/{cr_id}/ranking")
 def classroom_ranking(cr_id: int, db: Session = Depends(get_db),
                       u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     """班级学习排名：按平均掌握率排序。"""
     _get_classroom_or_404(cr_id, db)
     members = db.query(ClassroomMember).filter(ClassroomMember.classroom_id == cr_id).all()
@@ -489,6 +543,7 @@ def create_announcement(cr_id: int, data: AnnouncementCreate, db: Session = Depe
 @router.get("/{cr_id}/announcements")
 def list_announcements(cr_id: int, db: Session = Depends(get_db),
                        u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     anns = db.query(ClassroomAnnouncement).filter(
         ClassroomAnnouncement.classroom_id == cr_id) \
         .order_by(ClassroomAnnouncement.created_at.desc()).all()
@@ -632,6 +687,7 @@ class CommentCreate(BaseModel):
 @router.post("/{cr_id}/posts")
 def create_post(cr_id: int, data: PostCreate, db: Session = Depends(get_db),
                 u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     _get_classroom_or_404(cr_id, db)
     p = ClassroomPost(classroom_id=cr_id, author_id=u.id, title=data.title, content=data.content)
     db.add(p); db.commit(); db.refresh(p)
@@ -640,6 +696,7 @@ def create_post(cr_id: int, data: PostCreate, db: Session = Depends(get_db),
 
 @router.get("/{cr_id}/posts")
 def list_posts(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     posts = db.query(ClassroomPost).filter(ClassroomPost.classroom_id == cr_id) \
         .order_by(ClassroomPost.created_at.desc()).all()
     return [{
@@ -658,6 +715,7 @@ def list_posts(cr_id: int, db: Session = Depends(get_db), u: User = Depends(get_
 @router.post("/{cr_id}/posts/{post_id}/comments")
 def create_comment(cr_id: int, post_id: int, data: CommentCreate, db: Session = Depends(get_db),
                    u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     post = db.query(ClassroomPost).filter(
         ClassroomPost.id == post_id, ClassroomPost.classroom_id == cr_id).first()
     if not post:
@@ -670,6 +728,7 @@ def create_comment(cr_id: int, post_id: int, data: CommentCreate, db: Session = 
 @router.delete("/{cr_id}/posts/{post_id}")
 def delete_post(cr_id: int, post_id: int, db: Session = Depends(get_db),
                 u: User = Depends(get_current_user)):
+    _require_member(cr_id, db, u)
     c = _get_classroom_or_404(cr_id, db)
     post = db.query(ClassroomPost).filter(
         ClassroomPost.id == post_id, ClassroomPost.classroom_id == cr_id).first()
