@@ -29,9 +29,6 @@
         ></div>
       </div>
       <span class="progress-text">{{ Math.round(stats.progress_percentage) }}% 已掌握</span>
-      <el-button type="primary" size="small" @click="goAdaptivePractice">
-        智能练习
-      </el-button>
     </div>
 
     <!-- Tab -->
@@ -44,18 +41,11 @@
                 <span class="kp-cell-name">{{ row.knowledge_point_name }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="掌握状态" width="160">
+            <el-table-column prop="status" label="掌握状态" width="110">
               <template #default="{ row }">
-                <el-select
-                  :model-value="row.status"
-                  size="small"
-                  @change="(v: KnowledgeStatus) => updateStatus(row, v)"
-                  style="width: 130px"
-                >
-                  <el-option value="not_started" label="未开始" />
-                  <el-option value="in_progress" label="学习中" />
-                  <el-option value="mastered" label="已掌握" />
-                </el-select>
+                <el-tag :type="statusTagType(row.status)" size="small" round>
+                  {{ statusLabel(row.status) }}
+                </el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="mastery_level" label="掌握程度" width="140">
@@ -74,8 +64,8 @@
                   size="small"
                   type="primary"
                   link
-                  @click="goKpPractice(row.knowledge_point_id)"
-                >练习</el-button>
+                  @click="goEvaluate(row.knowledge_point_id, row.knowledge_point_name)"
+                >进入评判</el-button>
               </template>
             </el-table-column>
             <el-table-column prop="updated_at" label="更新时间" width="180">
@@ -111,8 +101,8 @@
             <el-button
               size="small"
               type="primary"
-              @click="goKpPractice(item.knowledge_point_id)"
-            >开始练习</el-button>
+              @click="goEvaluate(item.knowledge_point_id, item.name)"
+            >进入评判</el-button>
           </div>
         </div>
         <div v-else class="inline-empty">
@@ -157,66 +147,6 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="AI 对话评判" name="evaluate">
-        <div class="eval-wrap">
-          <!-- 选择知识点 -->
-          <div class="eval-select-bar">
-            <el-select
-              v-model="evalKpId"
-              placeholder="选择要评判的知识点"
-              filterable
-              style="width: 320px"
-            >
-              <el-option
-                v-for="r in records"
-                :key="r.knowledge_point_id"
-                :label="r.knowledge_point_name"
-                :value="r.knowledge_point_id"
-              >
-                <span>{{ r.knowledge_point_name }}</span>
-                <span style="float: right; color: #94a3b8; font-size: 12px">{{ statusLabel(r.status) }}</span>
-              </el-option>
-            </el-select>
-            <el-button type="primary" :loading="evalLoading" @click="startEvaluate">
-              开始评判
-            </el-button>
-          </div>
-
-          <!-- 对话区 -->
-          <div v-if="evalMessages.length" class="eval-chat">
-            <div v-for="(m, i) in evalMessages" :key="i" class="eval-msg" :class="m.role">
-              <div class="eval-bubble">{{ m.content }}</div>
-            </div>
-          </div>
-
-          <!-- 输入区 -->
-          <div v-if="evalActive" class="eval-input-bar">
-            <el-input
-              v-model="evalInput"
-              placeholder="输入你的回答..."
-              @keydown.enter="sendEval"
-            />
-            <el-button type="primary" :loading="evalSending" @click="sendEval">发送</el-button>
-          </div>
-
-          <!-- 评判结果 -->
-          <div v-if="evalResult" class="eval-result-card">
-            <el-alert type="success" :closable="false" show-icon>
-              <template #title>
-                掌握度：{{ evalResult.mastery }} 分（{{ statusLabel(evalResult.learning_status) }}）
-              </template>
-              <p v-if="evalResult.comment">{{ evalResult.comment }}</p>
-              <p v-if="evalResult.weak_points?.length">薄弱点：{{ evalResult.weak_points.join('、') }}</p>
-              <p v-if="evalResult.suggestions?.length">建议：{{ evalResult.suggestions.join('；') }}</p>
-            </el-alert>
-          </div>
-
-          <!-- 空状态 -->
-          <div v-if="!evalMessages.length && !evalResult" class="inline-empty">
-            <p>选择知识点并点击「开始评判」，AI 将通过多轮对话评估你的掌握程度，并自动更新学习进度</p>
-          </div>
-        </div>
-      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -247,22 +177,6 @@ const loading = ref(false)
 const recommendLoading = ref(false)
 const methodsLoading = ref(false)
 const methodsData = ref<{ summary: string; methods: Array<{ title: string; description: string; reason: string }> } | null>(null)
-
-// ── AI 对话评判 ──
-const evalKpId = ref<number | undefined>()
-const evalId = ref('')
-const evalMessages = ref<Array<{ role: 'assistant' | 'user'; content: string }>>([])
-const evalInput = ref('')
-const evalActive = ref(false)
-const evalSending = ref(false)
-const evalLoading = ref(false)
-const evalResult = ref<{
-  mastery: number
-  learning_status: string
-  comment: string
-  weak_points?: string[]
-  suggestions?: string[]
-} | null>(null)
 
 const statItems = computed(() => {
   if (!stats.value) return []
@@ -361,81 +275,17 @@ async function fetchStudyMethods() {
   }
 }
 
-async function startEvaluate() {
-  if (!evalKpId.value) {
-    ElMessage.warning('请先选择要评判的知识点')
+function goEvaluate(kpId: number, kpName?: string) {
+  if (!kpId) {
+    ElMessage.warning('无法定位知识点')
     return
   }
-  evalLoading.value = true
-  evalMessages.value = []
-  evalResult.value = null
-  evalActive.value = false
-  evalInput.value = ''
-  try {
-    const r = await learningAPI.evaluateStart(evalKpId.value)
-    evalId.value = r.eval_id
-    evalMessages.value.push({ role: 'assistant', content: r.question })
-    evalActive.value = true
-  } catch (e: any) {
-    ElMessage.error('启动评判失败: ' + (e?.response?.data?.detail || ''))
-  } finally {
-    evalLoading.value = false
-  }
-}
-
-async function sendEval() {
-  const ans = evalInput.value.trim()
-  if (!ans || evalSending.value) return
-  evalMessages.value.push({ role: 'user', content: ans })
-  evalInput.value = ''
-  evalSending.value = true
-  try {
-    const r = await learningAPI.evaluateReply(evalId.value, ans)
-    if (r.status === 'continue') {
-      if (r.comment) evalMessages.value.push({ role: 'assistant', content: r.comment })
-      if (r.question) evalMessages.value.push({ role: 'assistant', content: r.question })
-    } else {
-      evalActive.value = false
-      evalResult.value = r as any
-      await fetchProgress()
-    }
-  } catch (e: any) {
-    ElMessage.error('评判失败: ' + (e?.response?.data?.detail || ''))
-  } finally {
-    evalSending.value = false
-  }
+  router.push(`/course/${courseId.value}/evaluate/${kpId}?name=${encodeURIComponent(kpName || '')}`)
 }
 
 function onTabChange(name: string | number) {
   if (name === 'methods' && !methodsData.value) {
     fetchStudyMethods()
-  }
-}
-
-function goAdaptivePractice() {
-  router.push(`/course/${courseId.value}/practice?mode=adaptive`)
-}
-
-function goKpPractice(kpId: number) {
-  if (!kpId) {
-    ElMessage.warning('无法定位知识点')
-    return
-  }
-  router.push(`/course/${courseId.value}/practice?mode=knowledge_point&kp_id=${kpId}`)
-}
-
-async function updateStatus(row: ProgressRecord, status: KnowledgeStatus) {
-  try {
-    await learningAPI.updateProgress({
-      knowledge_point_id: row.knowledge_point_id,
-      status,
-      mastery_level: status === 'mastered' ? 1.0 : status === 'in_progress' ? 0.5 : 0.0,
-    })
-    row.status = status
-    ElMessage.success('状态已更新')
-    await fetchProgress()
-  } catch {
-    // 错误已处理
   }
 }
 
@@ -737,22 +587,5 @@ html.dark .method-rank {
   text-align: center;
 }
 
-.eval-wrap { display: flex; flex-direction: column; gap: var(--space-4); }
-.eval-select-bar { display: flex; align-items: center; gap: var(--space-3); }
-.eval-chat {
-  display: flex; flex-direction: column; gap: var(--space-3);
-  max-height: 380px; overflow-y: auto;
-  padding: var(--space-3); background: #f8fafc; border-radius: var(--radius-md);
-}
-.eval-msg { display: flex; }
-.eval-msg.user { justify-content: flex-end; }
-.eval-bubble {
-  max-width: 80%; padding: 10px 14px; border-radius: 12px;
-  font-size: var(--font-size-sm); line-height: var(--line-height-relaxed); white-space: pre-wrap;
-}
-.eval-msg.assistant .eval-bubble { background: #fff; border: 1px solid #e2e8f0; }
-.eval-msg.user .eval-bubble { background: var(--color-brand-600); color: #fff; }
-.eval-input-bar { display: flex; gap: var(--space-2); }
-.eval-result-card :deep(p) { margin: 4px 0; font-size: var(--font-size-sm); }
 .progress-view{max-width:1180px}.progress-header{padding:4px 2px 20px}.stats-row{gap:14px}.stat-card{border:1px solid #e4e8e2;border-radius:15px;background:#fff;box-shadow:0 3px 12px rgba(15,23,42,.04)}.stat-card:nth-child(1){background:#eff6ff;border-color:#bfdbfe}.stat-card:nth-child(2){background:#ecfdf3;border-color:#bbf7d0}.stat-card:nth-child(3){background:#fff7ed;border-color:#fed7aa}.stat-card:nth-child(4){background:#f5f3ff;border-color:#ddd6fe}.progress-bar-wrap,.kp-table-wrap,.recommend-wrap,.methods-wrap{border-color:#e4e8e2;background:#fff;box-shadow:0 3px 12px rgba(15,23,42,.035)}.recommend-item{background:#f5f9ff;border-color:#dbeafe}.method-item{background:#f5fcf7;border-color:#dcfce7}.progress-tabs{background:#fff;border:1px solid #e4e8e2;border-radius:15px;padding:8px 14px;box-shadow:0 3px 12px rgba(15,23,42,.035)}
 </style>
