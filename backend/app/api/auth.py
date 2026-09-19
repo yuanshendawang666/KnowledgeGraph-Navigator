@@ -174,8 +174,6 @@ class TokenResponse(BaseModel):
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(data: UserRegister, db: Session = Depends(get_db)):
     """用户注册"""
-    if data.role != UserRole.STUDENT:
-        raise HTTPException(403, "教师账号由管理员开通，公开注册仅支持学生")
     # 检查用户名是否已存在
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(
