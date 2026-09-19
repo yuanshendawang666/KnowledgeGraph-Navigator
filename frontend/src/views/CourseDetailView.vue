@@ -278,6 +278,8 @@ const courseId = computed(() => Number(route.params.id))
 
 const course = ref<CourseDetail | null>(null)
 const graphData = ref<GraphData | null>(null)
+// 右侧知识点结构始终使用完整图谱，不能随中间图谱的深度筛选而减少。
+const fullGraphData = ref<GraphData | null>(null)
 const knowledgePoints = ref<KnowledgePointItem[]>([])
 const documents = ref<DocumentItem[]>([])
 const docDetail = ref<any>(null)
@@ -285,7 +287,7 @@ const docDialogVisible = ref(false)
 const loading = ref(false)
 const graphLoading = ref(false)
 const extracting = ref(false)
-const graphDepth = ref(2)  // 图谱深度: 0=仅模块, 1=模块+子模块, 2=全部
+const graphDepth = ref(2)  // 图谱始终加载全部知识点；右侧知识树仅负责查看与展开
 const expandedModules = ref<Set<string>>(new Set())  // 展开的模块ID
 const showAllKps = ref(false)  // 是否展开全部知识点
 const relationDialogVisible = ref(false)
@@ -294,7 +296,7 @@ const relationForm = ref({ source_kp_id: undefined as number | undefined, target
 
 const hasDocuments = computed(() => (course.value?.document_count || 0) > 0)
 const hasGraph = computed(() => (graphData.value?.nodes?.length || 0) > 0)
-const knowledgeTree = computed(() => graphData.value?.tree || [])
+const knowledgeTree = computed(() => fullGraphData.value?.tree || [])
 
 const uploadHeaders = computed(() => ({
   Authorization: `Bearer ${auth.token}`,
@@ -355,9 +357,22 @@ function statusLabel(status: string): string {
 async function fetchGraph() {
   graphLoading.value = true
   try {
-    graphData.value = await coursesAPI.getGraph(courseId.value, graphDepth.value)
+    const viewDepth = graphDepth.value
+    if (viewDepth === 2) {
+      const fullData = await coursesAPI.getGraph(courseId.value, 2)
+      graphData.value = fullData
+      fullGraphData.value = fullData
+    } else {
+      const [viewData, fullData] = await Promise.all([
+        coursesAPI.getGraph(courseId.value, viewDepth),
+        coursesAPI.getGraph(courseId.value, 2),
+      ])
+      graphData.value = viewData
+      fullGraphData.value = fullData
+    }
   } catch {
     graphData.value = null
+    fullGraphData.value = null
   } finally {
     graphLoading.value = false
   }

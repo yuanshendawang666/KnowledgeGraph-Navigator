@@ -35,11 +35,6 @@
         :class="{ active: layoutMode === 'radial' }"
         @click="setLayoutMode('radial')"
       >圆形图</button>
-      <button
-        class="kg-layout-btn"
-        :class="{ active: showLeaves }"
-        @click="toggleLeaves"
-      >显示全部知识点</button>
       <div v-if="layoutMode === 'radial'" class="kg-gap-control">
         <span class="kg-gap-label">节点间距</span>
         <el-slider v-model="radialGap" :min="30" :max="160" :step="5" style="width: 120px" @change="buildGraph" />
@@ -85,13 +80,6 @@ async function fitGraph() {
 // 布局模式：tree=树状图, radial=圆形图
 const layoutMode = ref<'tree' | 'radial'>('radial')
 const radialGap = ref(80)
-
-// 是否显示叶子知识点（默认只显示模块层级，避免节点过多挤成一团）
-const showLeaves = ref(false)
-function toggleLeaves() {
-  showLeaves.value = !showLeaves.value
-  buildGraph()
-}
 
 // 关系类型配置（与后端 relation 字段对应，后端返回大写，这里做归一化）
 const RELATION_META: Record<string, { label: string; color: string }> = {
@@ -170,14 +158,16 @@ function computeRadialPositions(nodes: any[], cx: number, cy: number) {
     const subs = (children.get(id) || []).map(visit).filter((v): v is Branch => v !== null)
     return { id, weight: Math.max(1, subs.reduce((sum, c) => sum + c.weight, 0)), children: subs }
   }
-  const roots: Branch[] = []
-  for (const n of nodes) if (!parent.has(String(n.id))) {
+  // level=0 的课程模块始终从内圈展开；不能让没有 parent_id 的叶子节点抢占中心。
+  const moduleRoots: Branch[] = []
+  for (const n of nodes.filter((n: any) => Number(n.level) === 0)) {
     const branch = visit(String(n.id))
-    if (branch) roots.push(branch)
+    if (branch) moduleRoots.push(branch)
   }
+  const orphanRoots: Branch[] = []
   for (const n of nodes) {
     const branch = visit(String(n.id))
-    if (branch) roots.push(branch)
+    if (branch) orphanRoots.push(branch)
   }
   const rings: { id: string; angle: number }[][] = []
   function place(branch: Branch, start: number, sweep: number, depth: number) {
@@ -189,13 +179,18 @@ function computeRadialPositions(nodes: any[], cx: number, cy: number) {
       cursor += part
     }
   }
-  const total = roots.reduce((sum, r) => sum + r.weight, 0)
-  let cursor = -Math.PI / 2
-  for (const root of roots) {
-    const sweep = 2 * Math.PI * root.weight / total
-    place(root, cursor, sweep, 0)
-    cursor += sweep
+  function placeRoots(roots: Branch[], startDepth: number) {
+    const total = roots.reduce((sum, r) => sum + r.weight, 0)
+    let cursor = -Math.PI / 2
+    for (const root of roots) {
+      const sweep = 2 * Math.PI * root.weight / total
+      place(root, cursor, sweep, startDepth)
+      cursor += sweep
+    }
   }
+  placeRoots(moduleRoots, 1)
+  // 没有父节点的遗留知识点仍显示，但固定在外圈，避免挤占模块区域。
+  placeRoots(orphanRoots, 3)
   const positions = new Map<string, { x: number; y: number }>()
   let previousRadius = 0
   rings.forEach((ring, depth) => {
@@ -207,6 +202,12 @@ function computeRadialPositions(nodes: any[], cx: number, cy: number) {
         // 标签限制为两行、每行约十字，预留包围盒对角线间距。
         radius = Math.max(radius, (180 + radialGap.value) / (2 * Math.sin(delta / 2)))
       })
+    }
+    // 保留原有按关系展开的布局，仅压缩各圈之间的扩张量，
+    // 避免大半径触发 autoFit 后把所有节点缩得过小。
+    if (depth > 0) {
+      // 保持原始层间距，不再额外压缩或拉伸。
+      radius = previousRadius + (radius - previousRadius)
     }
     for (const node of ring) positions.set(byId.get(node.id)!.id, polarToXY(node.angle, radius, cx, cy))
     previousRadius = radius
@@ -228,10 +229,8 @@ async function buildGraph() {
   await nextTick()
   if (version !== buildVersion || !graphRef.value) return
 
-  // 默认只显示模块层级（level 0/1），开启"显示全部知识点"后包含叶子（level 2）
-  const visibleNodes = showLeaves.value
-    ? props.data.nodes
-    : props.data.nodes.filter((n: any) => (n as any).level !== 2)
+  // 节点层级由课程详情页上方的“仅模块 / +子模块 / 全部”统一控制。
+  const visibleNodes = props.data.nodes
   const visibleNodeIds = new Set(visibleNodes.map((n) => n.id))
 
   if (graphInstance) {
@@ -244,6 +243,14 @@ async function buildGraph() {
     visibleRelations.value.includes(normalizeRelation(e.relation))
     && visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target)
   )
+  // 完全没有关系边的知识点不参与圆形布局，单独放到右侧列表列中。
+  const connectedNodeIds = new Set<string>()
+  for (const edge of edges) {
+    connectedNodeIds.add(String(edge.source))
+    connectedNodeIds.add(String(edge.target))
+  }
+  const connectedNodes = visibleNodes.filter(node => connectedNodeIds.has(String(node.id)))
+  const isolatedNodes = visibleNodes.filter(node => !connectedNodeIds.has(String(node.id)))
 
   // 按根模块分组，分配颜色索引（同一根模块下的节点同色，颜色数有限需取模）
   const rootColorIndex = new Map<string, number>()
@@ -269,7 +276,17 @@ async function buildGraph() {
     const h = graphRef.value.clientHeight || 500
     const cx = w / 2
     const cy = h / 2
-    manualPositions = computeRadialPositions(visibleNodes, cx, cy)
+    manualPositions = computeRadialPositions(connectedNodes, cx, cy)
+    const positioned = Array.from(manualPositions.values())
+    const rightEdge = positioned.length
+      ? Math.max(...positioned.map(point => point.x))
+      : cx
+    const columnX = rightEdge + 260
+    const rowGap = 250
+    const startY = cy - ((isolatedNodes.length - 1) * rowGap) / 2
+    isolatedNodes.forEach((node, index) => {
+      manualPositions!.set(node.id, { x: columnX, y: startY + index * rowGap })
+    })
   }
 
   const nodeList = visibleNodes.map((n, i) => {
@@ -286,11 +303,11 @@ async function buildGraph() {
         sqlite_id: (n as any).sqlite_id,
         root_id: rid,
         color_index: rootColorIndex.get(rid) ?? 0,
+        is_isolated: isolatedNodes.some(node => node.id === n.id),
       },
       ...(pos ? { style: { x: pos.x, y: pos.y } } : {}),
     }
   })
-
   const data = { nodes: nodeList, edges: edgeList }
 
   graphInstance = new Graph({
@@ -303,16 +320,16 @@ async function buildGraph() {
     padding: 36,
     node: {
       style: {
-        size: (d: any) => Math.max(24, Math.min(48, ((d.data?.label || d.id || '').length || 3) * 2 + 26)) * nodeScale.value,
+        size: 160 * nodeScale.value,
         fill: (d: any) => NODE_COLORS.fill[d.data?.color_index ?? 0],
         stroke: (d: any) => NODE_COLORS.stroke[d.data?.color_index ?? 0],
         strokeWidth: 2,
         labelText: (d: any) => d.data?.label || d.id,
         labelFill: '#000000',
-        labelFontSize: 13,
-        labelWordWrap: true,
-        labelMaxWidth: 140,
-        labelMaxLines: 2,
+        labelFontSize: 40,
+        labelWordWrap: false,
+        labelMaxWidth: 400,
+        labelMaxLines: 1,
         labelFontWeight: 500,
         labelFontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
         labelPlacement: 'bottom',
@@ -377,7 +394,11 @@ async function buildGraph() {
     }
   })
 
-  graphInstance.render()
+  // render 是异步的；等待坐标落到画布后再计算视口，避免保留上一次布局的缩放状态。
+  await graphInstance.render()
+  if (version === buildVersion && graphInstance) {
+    await graphInstance.fitView({ padding: 48 })
+  }
 }
 
 watch(() => props.data, async () => {
