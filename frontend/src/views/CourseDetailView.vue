@@ -955,6 +955,30 @@ onMounted(fetchCourse)
 .doc-status.extracted { background: #dcfce7; color: #15803d; }
 .doc-status.failed { background: #fef2f2; color: #dc2626; }
 
+/* 文档预览：保留原始段落，同时避免超长文本溢出弹窗 */
+.doc-detail-content { min-width: 0; }
+.doc-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.doc-detail-text {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  max-height: min(60vh, 640px);
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font: inherit;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+}
+
 .doc-delete {
   display: flex;
   align-items: center;
