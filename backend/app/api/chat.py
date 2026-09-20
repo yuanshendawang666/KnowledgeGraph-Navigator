@@ -89,7 +89,7 @@ def _build_markdown(s: ChatSession) -> str:
 
 
 def _build_pdf(s: ChatSession) -> bytes:
-    """用 fpdf 将会话生成 PDF（加载 Windows 中文字体）。"""
+    """用 fpdf 将会话生成 PDF，并自动寻找当前系统可用的中文字体。"""
     from fpdf import FPDF
 
     def pdf_text(value: str | None) -> str:
@@ -129,13 +129,19 @@ def _build_pdf(s: ChatSession) -> bytes:
         "C:/Windows/Fonts/simhei.ttf",
         "C:/Windows/Fonts/msyh.ttc",
         "C:/Windows/Fonts/simsun.ttc",
+        # Ubuntu/Debian：fonts-droid-fallback 提供稳定的 TrueType 中文字体。
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        # 兼容常见的 Noto CJK 字体安装位置。
+        "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     ):
         if os.path.exists(candidate):
             font_path = candidate
             break
-    if font_path:
-        pdf.add_font("cn", "", font_path)
-    font_family = "cn" if font_path else "helvetica"
+    if not font_path:
+        raise RuntimeError("服务器缺少中文 PDF 字体，请安装 fonts-droid-fallback 后重试")
+    pdf.add_font("cn", "", font_path)
+    font_family = "cn"
 
     # 标题信息区
     pdf.set_fill_color(30, 64, 175)
@@ -241,7 +247,10 @@ def export_markdown(session_id: int, db: Session = Depends(get_db), u: User = De
 @router.get("/sessions/{session_id}/export/pdf")
 def export_pdf(session_id: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
     s = _get_owned_session(session_id, db, u)
-    pdf_bytes = _build_pdf(s)
+    try:
+        pdf_bytes = _build_pdf(s)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     filename = quote(f"{s.title}.pdf")
     return Response(
         content=pdf_bytes,

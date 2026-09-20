@@ -401,8 +401,8 @@ async function exportPdf() {
     const blob = await chatAPI.exportPdf(activeSessionId.value)
     downloadBlob(blob, `${currentSessionTitle()}.pdf`)
     ElMessage.success('PDF 已导出')
-  } catch {
-    ElMessage.error('导出 PDF 失败')
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || '导出 PDF 失败')
   }
 }
 
