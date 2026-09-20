@@ -142,9 +142,18 @@ def _build_pdf(s: ChatSession) -> bytes:
         raise RuntimeError("服务器缺少中文 PDF 字体，请安装 fonts-droid-fallback 后重试")
     pdf.add_font("cn", "", font_path)
     font_family = "cn"
-    # Droid Sans Fallback 主要覆盖中文，缺少的英文、数字与符号交给核心字体补齐。
-    # fpdf2 会按单个字符选择回退字体，因此中英文混排不会再丢字。
-    pdf.set_fallback_fonts(["helvetica"])
+
+    # Droid Sans Fallback 主要覆盖中文；fpdf2 的回退字体也必须提前注册，
+    # 不能直接使用内置 Helvetica。DejaVu Sans 是 Ubuntu 默认提供的拉丁字体。
+    latin_font_path = next((candidate for candidate in (
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ) if os.path.exists(candidate)), None)
+    if not latin_font_path:
+        raise RuntimeError("服务器缺少 PDF 英文字体，请安装 fonts-dejavu-core 后重试")
+    pdf.add_font("latin", "", latin_font_path)
+    # fpdf2 按单个字符回退，因此中英文、数字与符号可以在同一行正确显示。
+    pdf.set_fallback_fonts(["latin"])
 
     # 标题信息区
     pdf.set_fill_color(30, 64, 175)
