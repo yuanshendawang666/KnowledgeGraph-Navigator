@@ -142,6 +142,9 @@ def _build_pdf(s: ChatSession) -> bytes:
         raise RuntimeError("服务器缺少中文 PDF 字体，请安装 fonts-droid-fallback 后重试")
     pdf.add_font("cn", "", font_path)
     font_family = "cn"
+    # Droid Sans Fallback 主要覆盖中文，缺少的英文、数字与符号交给核心字体补齐。
+    # fpdf2 会按单个字符选择回退字体，因此中英文混排不会再丢字。
+    pdf.set_fallback_fonts(["helvetica"])
 
     # 标题信息区
     pdf.set_fill_color(30, 64, 175)
